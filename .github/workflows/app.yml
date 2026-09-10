@@ -1,0 +1,96 @@
+name: App
+
+# Two behaviours from one workflow:
+#   push to main / PR  → run the self check, and build the image WITHOUT pushing,
+#                        so a broken Dockerfile is caught before it matters
+#   push of a v* tag   → run the self check, then build and publish to GHCR
+#
+# Deploying is a deliberate version bump: only a tag publishes an image.
+# There is intentionally no `latest` tag and no push on main — the Ansible role
+# pins an exact version, and a moving tag would defeat that.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+# Note: no `paths:` filter. It would apply to tag pushes too, so tagging a commit
+# that only touched website/ would silently skip publishing the release.
+# The self check runs in about a second — there is nothing to save here.
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Self check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Guards the invariants that fail SILENTLY — producing a wrong number
+      # rather than an error. See app.web/selfcheck.js and CLAUDE.md.
+      - name: Run self check
+        working-directory: app.web
+        run: node selfcheck.js
+
+  build:
+    name: Build image
+    needs: test
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm64 for the Pi, amd64 so the image also runs anywhere else.
+      # The image only COPYs JavaScript — nothing is compiled — so emulation
+      # costs almost nothing here and avoids depending on arm64 runner availability.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v1.2.3 publishes 1.2.3, 1.2 and 1 — pin the exact one in Ansible.
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app.web
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Keeps the GHCR package listing clean — provenance attestations show up
+          # as phantom "unknown/unknown" architecture entries next to the real ones.
+          provenance: false
+          sbom: false

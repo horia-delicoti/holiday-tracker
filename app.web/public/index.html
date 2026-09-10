@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Holiday Ledger</title>
+<!-- Installable to the iOS/Android home screen: same app, same server, same data —
+     the manifest only changes how it is launched (own icon, no browser chrome,
+     its own cookie jar so the Authelia session survives between launches). -->
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#1B2733" />
+<link rel="apple-touch-icon" href="/icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Holidays" />
+<!-- Chart.js is vendored locally (public/chart.umd.min.js) so the page works
+     on the rpi5 without reaching out to any external CDN. The app makes no
+     outbound requests at all — FX rates are entered by hand, not fetched. -->
+<script src="/chart.umd.min.js"></script>
+<style>
+  /* ===========================================================
+     PALETTE — "travel journal". Same approach as rental_tracker:
+     every colour is a CSS variable, and the JS chart code reads
+     the same variables via c(), so CSS and charts cannot drift.
+  ============================================================ */
+  :root{
+    --ink:#1E2A30; --paper:#F3F5F6; --surface:#FFFFFF; --line:#E2E7E9;
+    /* one hue per spend category — drives legends, donuts and stacked bars */
+    --flights:#3E7CB1; --stay:#2F6F62; --food:#C9822E; --activities:#7A9E4F;
+    --transport:#8A7AA8; --shopping:#B5654A; --insurance:#6B8E9E; --misc:#98A0A5;
+    /* Mulberry: the one hue family not already spoken for. Deliberately kept
+       away from --shopping (#B5654A clay) and --transport (#8A7AA8 lavender),
+       which are its nearest neighbours in a stacked bar. */
+    --medical:#A6486B;
+    /* Glacier cyan and leather brown — the last two unused hue families.
+       Each sits next to a deliberately distant neighbour in the CATS order:
+       ski (cyan) between activities (green) and transport (lavender),
+       carrental (brown) between transport (lavender) and shopping (clay). */
+    --ski:#3E9EA8; --carrental:#7A5C3E;
+    --accent:#2F6F62; --warn:#B5654A; --good:#4C8A5A;
+    --muted:#6B7680; --soft:#F6F8F9; --hair:#EDF1F2;
+    /* Translucent surfaces for the floating bar and sheet. Kept as variables so
+       the frosted look has one definition, like every other colour here. */
+    --glass:rgba(255,255,255,.72); --glassline:rgba(255,255,255,.62);
+    --glassshadow:0 8px 28px rgba(30,42,48,.16);
+    /* How far the floating tab bar sits off the bottom. iOS reserves ~34px for
+       the home indicator, which is far more than the 5px pill actually needs —
+       so this reclaims 14px of it and floors at 8px for devices with no
+       indicator at all. Defined once: the bar's offset and the page's bottom
+       clearance both read it, so they can never drift apart. */
+    --navgap:max(8px, calc(env(safe-area-inset-bottom) - 14px));
+    --serif:ui-serif,Georgia,"Iowan Old Style","Palatino Linotype",serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  /* App-like touch behaviour. `manipulation` removes double-tap-to-zoom (and the
+     300ms tap delay that comes with it) while leaving scrolling alone;
+     text-size-adjust stops iOS inflating type when you rotate the phone;
+     overscroll-behavior kills the rubber-band bounce past the top of the page,
+     which is the single biggest "this is a web page" tell. */
+  html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
+  body{touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+       margin:0;background:var(--paper);color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       font-size:15px;line-height:1.5}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  /* ---------- header ---------- */
+  header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px;margin-bottom:20px}
+  .eyebrow{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  h1{font-family:var(--serif);font-size:34px;margin:4px 0 0;font-weight:600}
+  .brand{display:flex;align-items:center;gap:11px;font-size:27px;margin:0}
+  .brand svg{width:26px;height:26px;color:var(--flights);flex:none}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btns select{width:auto;padding:8px 9px;font-size:13px}
+  /* Settings dropdown — anchored to its button rather than a modal, because it
+     is a menu of four items, not a task. */
+  .menuwrap{position:relative}
+  .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:45;display:none;
+       background:var(--surface);border:1px solid var(--line);border-radius:11px;
+       padding:6px;width:214px;box-shadow:0 10px 30px rgba(30,42,48,.16)}
+  .menu.open{display:block}
+  .mrow{display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;
+       font-family:inherit;font-size:13.5px;color:var(--ink);padding:9px 10px;border-radius:7px;
+       text-decoration:none}
+  .mrow:hover{background:var(--soft)}
+  .msep{height:1px;background:var(--hair);margin:5px 8px}
+  /* Rates button feedback: the label carries the result, so there is no toast
+     to miss and no silent failure. */
+  #ratesBtn.ok{border-color:var(--good);color:var(--good)}
+  #ratesBtn.bad{border-color:var(--warn);color:var(--warn)}
+  #ratesBtn:disabled{opacity:.6;cursor:default}
+  /* Shown only while the display currency differs from the stored one. Without
+     it a converted figure eventually gets screenshotted and believed. */
+  .convbar{display:none;background:#EAF2F7;border:1px solid #CBE0EC;border-radius:10px;
+       padding:9px 13px;font-size:12.5px;color:#255A7E;margin-bottom:14px;line-height:1.5}
+  .convbar.show{display:block}
+  /* Phones: the five header buttons wrapped onto two rows and ate roughly a
+     quarter of the screen before a single figure appeared. The whole row goes,
+     and its actions reappear as a fourth tab in the bottom bar. Desktop is
+     untouched — this is the only rule that hides them. */
+  @media(max-width:700px){
+    header{align-items:center;gap:10px;margin-bottom:16px}
+    h1{font-size:24px}
+    .btns{display:none}
+  }
+  /* Frosting is opt-in via @supports: without backdrop-filter a translucent
+     background is just a washed-out one, so unsupported browsers keep the solid
+     surface and lose nothing but the effect. */
+  @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+    @media(max-width:700px){
+      #viewNav{background:var(--glass);border-color:var(--glassline);
+           -webkit-backdrop-filter:blur(22px) saturate(180%);
+           backdrop-filter:blur(22px) saturate(180%)}
+    }
+    .sheet{background:var(--glass);border:1px solid var(--glassline);
+         -webkit-backdrop-filter:blur(26px) saturate(180%);
+         backdrop-filter:blur(26px) saturate(180%)}
+  }
+  /* Bottom-anchored action sheet — the iOS idiom, and it puts the choices near
+     your thumb rather than at the top of the screen. Floats clear of all three
+     edges to match the tab bar. Desktop never sees it. */
+  .sheet{background:var(--surface);border:1px solid var(--line);border-radius:22px;
+       width:calc(100% - 20px);margin:0 10px calc(10px + env(safe-area-inset-bottom));
+       padding:8px;box-shadow:var(--glassshadow)}
+  .sheetbg{align-items:flex-end;padding:0}
+  .sheetrow{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;
+       font-family:inherit;font-size:16px;color:var(--ink);text-align:left;
+       padding:14px 12px;border-radius:16px;cursor:pointer}
+  .sheetrow:active{background:var(--soft)}
+  .sheetrow .ico{width:24px;text-align:center;color:var(--muted);font-size:16px;flex:none}
+  .sheetsep{height:1px;background:var(--hair);margin:6px 10px}
+  .sheetsel{display:flex;align-items:center;gap:12px;padding:10px 12px;font-size:16px;color:var(--ink)}
+  .sheetsel select{width:auto;margin-left:auto;font-size:16px}
+  .sheetcancel{width:100%;justify-content:center;margin-top:8px;padding:13px;font-size:16px}
+  .btn{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);
+       color:var(--ink);padding:8px 14px;border-radius:8px;font-size:14px;cursor:pointer;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#255a4f}
+  .btn.danger{color:var(--warn)}
+  .btn.danger:hover{border-color:var(--warn)}
+  /* ---------- view nav ---------- */
+  #viewNav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .vtab{font-family:var(--serif);font-size:15px;font-weight:600;padding:8px 18px;border-radius:10px;
+       border:1px solid var(--line);background:var(--surface);cursor:pointer;color:var(--ink)}
+  .vtab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .vtab:hover:not(.on){border-color:var(--accent);color:var(--accent)}
+  .vtab svg{display:none}                       /* icons are for the bottom bar only */
+  /* The fourth tab is an ACTION, not a destination — it opens the sheet. It has
+     no data-v, so the router can never select it, and it does not exist at all
+     on desktop, where the header keeps its five buttons. */
+  .navmore{display:none}
+  /* ---------- iOS-style bottom tab bar ----------
+     Below 700px the view switcher leaves the top of the page and becomes a
+     fixed bar, because on a phone the top of the screen is the furthest point
+     from your thumb. env(safe-area-inset-bottom) keeps it clear of the home
+     indicator — that only resolves because the viewport meta carries
+     viewport-fit=cover. */
+  @media(max-width:700px){
+    /* Floating capsule, inset on all four sides — but sitting as low as it can
+       without fouling the home indicator. See --navgap for how low that is. */
+    #viewNav{position:fixed;left:14px;right:14px;bottom:var(--navgap);
+         z-index:40;margin:0;gap:2px;
+         background:var(--surface);border:1px solid var(--line);border-radius:26px;
+         padding:7px 6px;box-shadow:var(--glassshadow)}
+    .vtab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+         font-family:inherit;font-size:11px;font-weight:500;letter-spacing:.01em;
+         padding:6px 2px;border:0;border-radius:18px;background:none;color:var(--muted);
+         transition:background .18s ease,color .18s ease}
+    /* the selected tab gets its own soft capsule, the way iOS marks the active one */
+    .vtab.on{background:rgba(47,111,98,.10);color:var(--accent)}
+    .vtab:hover:not(.on){color:var(--muted)}
+    .vtab:active{transform:scale(.96)}
+    .vtab svg{display:block;width:22px;height:22px;stroke-width:1.7}
+    .navmore{display:flex}
+    /* the page has to clear the floating bar, and the notch at the other end */
+    .wrap{padding-top:calc(24px + env(safe-area-inset-top));
+          padding-bottom:calc(80px + var(--navgap))}
+  }
+  /* ---------- year pills ---------- */
+  #tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  .tab{font-family:var(--mono);font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);
+       background:var(--surface);cursor:pointer;color:var(--ink)}
+  .tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  /* ---------- cards ---------- */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+  h2{font-family:var(--serif);font-size:18px;margin:0 0 12px;font-weight:600}
+  h2 .sub{font-family:inherit;font-weight:400;font-size:13px;color:var(--muted)}
+  .cardhead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  /* ---------- KPI row ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  @media(max-width:720px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .kpi .l{display:flex;align-items:center;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;color:var(--muted)}
+  .kpi .v{font-family:var(--mono);font-size:22px}
+  .kdelta{font-family:var(--mono);font-size:11px;margin-top:4px;color:var(--muted)}
+  .kdelta.up{color:var(--warn)}   /* spending more than last year */
+  .kdelta.down{color:var(--good)} /* spending less */
+  .dot{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
+  /* ---------- layout grids ---------- */
+  .charts2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:900px){.charts2{grid-template-columns:1fr}}
+  /* The trip page is not two equal halves: the ledger is the working surface
+     and needs the room, the breakdown is a glance. 5/8 vs 3/8, same ratio
+     rental_tracker uses for its ledger-plus-chart row. */
+  .tripmain{display:grid;grid-template-columns:5fr 3fr;gap:16px;margin-top:16px;align-items:start}
+  @media(max-width:900px){.tripmain{grid-template-columns:1fr}}
+  .full{grid-column:1/-1}
+  /* Every canvas sits in a fixed-height, position:relative box and fills it
+     absolutely. Chart.js (responsive + maintainAspectRatio:false) measures its
+     parent on each resize and writes an inline height onto the canvas; if the
+     parent's own height is derived from that canvas, every re-render feeds a
+     slightly bigger number back in and the chart creeps out of its card. A
+     `max-height` on the canvas can't stop it — the inline style wins. Pinning
+     the box height and taking the canvas out of flow breaks the loop for good. */
+  .chartbox{position:relative;width:100%;height:280px}
+  .chartbox > canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+  .chartbox.sm{height:240px}
+  .chartbox.xs{height:180px}
+  .flowcap{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+     text-align:right;padding:0 0 6px;font-weight:600;border-bottom:1px solid var(--hair)}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 0;border-bottom:1px solid var(--hair);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  td:first-child{font-family:inherit}
+  tr:last-child td{border-bottom:0}
+  /* Cells carry no horizontal padding, so a right-aligned figure ends flush
+     against the next column. Add the gap between columns only — the first
+     column stays flush with the card edge, and so does the last. */
+  th + th, td + td{padding-left:14px}
+  /* The burn bar needs more than text does: it is a graphic starting at x=0 of
+     its cell, so at 14px it still reads as touching the amount beside it. */
+  .barcell{padding-left:24px}
+  /* ---------- narrow screens: reflow, never truncate ----------
+     Below 700px a seven-column table cannot fit, and the two usual escapes are
+     both bad: dropping columns hides data, sideways scrolling inside a page is
+     miserable on iOS. So each row becomes its own block and every cell keeps
+     its heading, taken from data-l. Nothing is removed. */
+  @media(max-width:700px){
+    table.reflow thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    table.reflow tr{display:block;border:1px solid var(--line);border-radius:10px;
+         padding:10px 12px;margin-bottom:10px;background:var(--surface)}
+    table.reflow td{display:flex;justify-content:space-between;align-items:center;gap:12px;
+         text-align:right;padding:3px 0;border-bottom:0}
+    table.reflow td:first-child{text-align:left;font-size:15px;padding-bottom:7px;
+         margin-bottom:5px;border-bottom:1px solid var(--hair);display:block}
+    /* the heading each cell lost when the table stopped being a table */
+    table.reflow td::before{content:attr(data-l);font-family:var(--sans);font-size:11px;
+         text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left}
+    table.reflow td:first-child::before{content:none}
+    table.reflow td.barcell{padding-left:0}
+    table.reflow .bar{flex:1;max-width:60%}
+  }
+  tr.click{cursor:pointer}
+  tr.click:hover td{background:var(--soft)}
+  .pill{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+        padding:2px 7px;border-radius:999px;background:var(--soft);color:var(--muted);border:1px solid var(--line)}
+  .pill.future{background:#EAF2F7;color:#3E7CB1;border-color:#CBE0EC}
+  .pill.est{background:#FFF4DE;color:#8A6D1F;border-color:#E8D6A8}
+  /* An estimated amount is drawn in outline, not solid: it should never read as
+     settled money at a glance, even before you notice the pill next to it. */
+  .amt.est{color:var(--muted);font-style:italic}
+  /* Home from a trip with guesses still on the ledger — the one failure mode
+     that turns this feature into fake history, so it gets a full-width strip. */
+  .warnbar{background:#FFF8E6;border:1px solid #EBDCB2;border-radius:10px;padding:11px 14px;
+       font-size:13px;color:#6B5A28;margin-bottom:16px;line-height:1.55;display:none}
+  .warnbar.show{display:block}
+  .warnbar a{color:#6B5A28;cursor:pointer;text-decoration:underline}
+  /* budget-vs-actual bar rendered inside a cell */
+  .bar{height:7px;border-radius:4px;background:var(--hair);position:relative;overflow:hidden;min-width:60px}
+  .bar > i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--accent)}
+  .bar > i.over{background:var(--warn)}
+  /* ---------- trip ledger ---------- */
+  .ledger{display:flex;flex-direction:column;gap:5px;max-height:430px;overflow:auto;padding-right:4px}
+  /* date · category · note · flags · amount · edit · delete
+     The flags get their OWN column. They used to live inside .n, which
+     truncates with an ellipsis — so a long note silently ate the "estimate"
+     pill and a medium one ate it while leaving "prepaid" visible. Status must
+     never be truncatable; only the note text is allowed to be clipped. */
+  /* Tightened: the date is five mono characters (MM-DD) and never needs 64px,
+     and the category has a colour dot doing half the work so its label can
+     truncate. minmax(0,1fr) rather than 1fr so the note column is actually
+     allowed to shrink and ellipsis — a bare 1fr refuses to go below its
+     content and pushes the row wide instead. */
+  .lrow{display:grid;grid-template-columns:42px 104px minmax(0,1fr) auto auto auto auto auto;
+        gap:6px;align-items:center;font-size:14px}
+  .lrow .flags{display:flex;gap:4px;white-space:nowrap}
+  /* Phones: the eight-column row folds into two lines. Line one is the note and
+     the amount; line two is the metadata. Every field survives — date, category,
+     as-paid, both pills, base amount, edit and delete. */
+  @media(max-width:700px){
+    .lrow{grid-template-columns:minmax(0,1fr) auto auto auto;
+          grid-template-areas:"note note amt amt" "meta flags edit del";
+          row-gap:3px;padding:7px 0;border-bottom:1px solid var(--hair)}
+    .lrow .n{grid-area:note;font-size:14px}
+    .lrow .amt{grid-area:amt;font-size:15px}
+    .lrow .d{grid-area:meta;display:none}
+    .lrow .cat{grid-area:meta;font-size:11px}
+    .lrow .cat::after{content:" · " attr(data-d);white-space:pre}
+    .lrow .orig{grid-area:meta;justify-self:end;align-self:center}
+    .lrow .flags{grid-area:flags}
+    .lrow .pencil{grid-area:edit;font-size:16px;padding:4px}
+    .lrow .trash{grid-area:del;font-size:16px;padding:4px}
+    .ledger{max-height:none}
+  }
+  .lrow .d{font-family:var(--mono);color:var(--muted);font-size:12px;white-space:nowrap}
+  .lrow .cat{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);min-width:0}
+  /* The label needs its own box to ellipsis in — a flex container cannot. */
+  .lrow .cat span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lrow .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .lrow .amt{font-family:var(--mono);text-align:right;white-space:nowrap}
+  /* As-paid sits BESIDE the base amount, not under it. Stacking it made a
+     foreign row two lines tall, so a mixed-currency ledger had ragged row
+     heights and no clean column of figures to scan. The base amount stays
+     right-aligned regardless, because the fixed-width ✎ ✕ buttons anchor it. */
+  .lrow .orig{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+  .trash{border:0;background:none;color:rgba(181,101,74,.55);cursor:pointer;padding:2px;font-size:14px;line-height:1}
+  .trash:hover{color:var(--warn)}
+  .pencil{border:0;background:none;color:var(--muted);cursor:pointer;padding:2px;font-size:13px;line-height:1}
+  .pencil:hover{color:var(--accent)}
+  /* Inline edit row — the ledger row is replaced in place by the same controls
+     as the add row, pre-filled. Same flex-wrap treatment as .addrow, for the
+     same reason: too many controls to hold in fixed columns without crushing
+     the note. Tinted and outlined so it's obvious which row you're editing. */
+  .editrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+           background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:9px}
+  .editrow > *{flex:0 0 auto}
+  .editrow .grow{flex:1 1 200px;min-width:160px}
+  /* shared by the add row and the edit row */
+  .chk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
+  .chk input{width:auto}
+  .btn.sm{padding:5px 11px;font-size:13px}
+  .empty{color:var(--muted);font-size:13px;font-style:italic;padding:6px 0}
+  /* add-entry row: date · category · note · amount · currency · fx · +
+     Flex, deliberately NOT grid. A 7-column fixed grid overflowed this card —
+     the fixed columns summed to more than the inner width, so the note's 1fr
+     clamped to a couple of pixels and you couldn't see what you were typing.
+     Flex with wrapping gives the note a real minimum and pushes the numeric
+     controls onto a second line when there isn't room, instead of crushing them. */
+  .addrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+          margin-top:10px;border-top:1px solid var(--hair);padding-top:10px}
+  .addrow > *{flex:0 0 auto}                      /* fixed-width controls by default */
+  .addrow .grow{flex:1 1 220px;min-width:180px}   /* the note — never allowed to collapse */
+  /* Explicit widths beat the generic `input,select{width:100%}` below on
+     specificity (class 0-1-0 vs element 0-0-1), so no !important needed. */
+  .w-date{width:136px} .w-cat{width:130px} .w-amt{width:108px} .w-cur{width:82px} .w-fx{width:98px}
+  input,select,textarea{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:7px 9px;
+       font-size:14px;color:var(--ink);width:100%;font-family:inherit}
+  /* iOS zooms the whole page in whenever you focus a field whose text is under
+     16px — and it does not zoom back out afterwards. That, not pinching, is
+     what made this feel like a web page. 16px on touch screens stops it at
+     source, so it stays fixed even in Safari where user-scalable=no is ignored. */
+  @media(max-width:700px){
+    input,select,textarea{font-size:16px;padding:9px 10px}
+  }
+  input.mono,select.mono{font-family:var(--mono)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,111,98,.12)}
+  input:disabled{background:var(--soft);color:var(--muted)}
+  .addbtn{border:0;background:var(--accent);color:#fff;border-radius:7px;width:32px;height:32px;font-size:18px;
+       cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .amtwrap{position:relative}
+  .amtwrap .cur{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px}
+  .amtwrap input{padding-left:26px}
+  /* ---------- trip header ---------- */
+  /* Picker left, actions right, wrapping to two lines on a narrow screen
+     rather than squeezing either. The select is capped so it doesn't stretch
+     to absurd widths on a wide display. */
+  .triphead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+  .triphead .tsel{flex:1 1 260px;min-width:200px;max-width:420px;
+       font-family:var(--serif);font-size:17px;font-weight:600;padding:9px 11px}
+  /* The facts line: free-flowing, so a long date range simply wraps to the
+     next line instead of forcing a column wider than its neighbours. */
+  .tripmeta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:12px;
+       font-size:13px;color:var(--muted)}
+  .tripmeta b{font-family:var(--mono);font-weight:400;color:var(--ink)}
+  .tripmeta .sep{width:1px;height:12px;background:var(--line)} /* hairline divider, hidden when it wraps to a line start */
+  /* ---------- legend + mini stats ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .minis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  @media(max-width:720px){.minis{grid-template-columns:repeat(2,1fr)}}
+  .mini{background:var(--soft);border-radius:8px;padding:10px 12px}
+  .mini .ml{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .mini .mv{font-family:var(--mono);font-size:16px;margin-top:3px}
+  /* ---------- lifetime strip ---------- */
+  #lifetime{background:var(--accent);color:#fff;border-radius:12px;padding:18px;margin-top:16px;
+       display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  @media(max-width:720px){#lifetime{grid-template-columns:repeat(2,1fr)}}
+  #lifetime .ll{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.72)}
+  #lifetime .lv{font-family:var(--mono);font-size:18px;margin-top:3px}
+  /* ---------- estimator ---------- */
+  .estgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end}
+  @media(max-width:720px){.estgrid{grid-template-columns:repeat(2,1fr)}}
+  .estgrid label,.fgrid label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px}
+  .estout{background:var(--soft);border-radius:10px;padding:14px;margin-top:12px;text-align:center}
+  .estout .big{font-family:var(--mono);font-size:26px;color:var(--accent);font-weight:600}
+  .estout .det{font-size:12px;color:var(--muted);margin-top:4px}
+  /* ---------- modals ---------- */
+  .modal-bg{position:fixed;inset:0;background:rgba(30,42,48,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;
+         padding:20px;max-height:90vh;overflow:auto}
+  .modal h3{font-family:var(--serif);font-size:19px;margin:0 0 4px}
+  .modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  .fgrid .wide{grid-column:1/-1}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  .modal .note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
+  .err{background:#FDF0EC;border:1px solid #EBC9BE;color:#8C4530;border-radius:8px;padding:8px 11px;
+       font-size:13px;margin-bottom:12px;display:none}
+  .err.show{display:block}
+  /* snapshot list */
+  .snaprow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:9px 2px;border-bottom:1px solid var(--hair);font-size:13px}
+  .snaprow:last-child{border-bottom:0}
+  .snaprow .when{font-family:var(--mono)}
+  .snaprow .sz{color:var(--muted);font-size:12px}
+  /* currency rows in settings */
+  .currow{display:grid;grid-template-columns:80px 70px 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+  /* ---------- first-run / empty state ---------- */
+  #firstRun{text-align:center;padding:44px 20px}
+  #firstRun h2{font-size:24px}
+  #firstRun p{max-width:520px;margin:0 auto 18px;color:var(--muted);font-size:14px}
+  .foot{font-size:12px;color:var(--muted);margin-top:22px;line-height:1.6;max-width:820px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== header ===== -->
+  <header>
+    <!-- Just the name. The currency used to be spelled out here, but the
+         dropdown two controls along already says it — and saying it twice
+         invites them to disagree. -->
+    <h1 class="brand">
+      <!-- Same dart as the app icon and the Homer tile. The fold is stroked in
+           the page colour rather than being a gap in the geometry, exactly as
+           the icon does it — so it only reads correctly on --paper, which is
+           the only background this header ever sits on. -->
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <polygon points="22.56,1.68 1.44,12.00 10.56,13.92" fill="currentColor"/>
+        <polygon points="22.56,1.68 10.56,13.92 12.72,22.56" fill="currentColor"/>
+        <path d="M22.56,1.68 L10.56,13.92" stroke="var(--paper)" stroke-width="0.67"/>
+      </svg>
+      Holiday Ledger
+    </h1>
+    <!-- Desktop only. On phones this whole row is hidden and its actions
+         reappear as the fourth tab in the bottom bar, within thumb reach. -->
+    <div class="btns">
+      <button class="btn" id="ratesBtn">↻ <span id="ratesLbl">Rates update</span></button>
+      <select id="dispCur" class="mono" aria-label="Show amounts in" title="Show amounts in"></select>
+      <div class="menuwrap">
+        <button class="btn" id="setMenuBtn" aria-haspopup="menu" aria-expanded="false">⚙ Settings ▾</button>
+        <div class="menu" id="setMenu" role="menu">
+          <button class="mrow" id="setBtn">⚙ Currencies &amp; rates</button>
+          <div class="msep"></div>
+          <!-- Save is a plain link to the export endpoint; `download` forces a file save -->
+          <a class="mrow" id="saveLink" href="/api/export" download>⬇ Save a backup</a>
+          <button class="mrow" id="loadBtn">⬆ Load a backup</button>
+          <button class="mrow" id="restoreBtn">⟲ Restore a snapshot</button>
+        </div>
+      </div>
+      <button class="btn primary" id="newTripBtn">+ Trip</button>
+    </div>
+    <!-- Sits outside .btns so hiding that row on phones cannot reach it. -->
+    <input id="fileInput" type="file" accept="application/json" style="display:none" />
+  </header>
+
+  <!-- Shown only while the store is empty — an app with no data and eight blank
+       charts looks broken rather than new. -->
+  <div id="firstRun" class="card" style="display:none">
+    <h2>No trips recorded yet</h2>
+    <p>Add a trip, then log what you spent on it — flights and hotels as prepaid items,
+       everything else as it happens. Amounts can be entered in GBP, EUR or RON; the
+       exchange rate is frozen onto each line the moment you save it, so later rate
+       moves never rewrite what a past holiday cost you.</p>
+    <button class="btn primary" id="firstTripBtn">+ Add your first trip</button>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="convbar" id="convBar"></div>
+    <div class="warnbar" id="staleBar"></div>
+    <div id="viewNav"></div>   <!-- Overview / By year / Trips -->
+    <div id="tabs"></div>      <!-- year pills (year view only) -->
+
+    <!-- =========================================================
+         OVERVIEW — everything that only makes sense across years
+    ========================================================== -->
+    <div id="overviewView">
+      <div class="kpis" id="ovKpis"></div>
+
+      <div class="charts2">
+        <div class="card full">
+          <h2>Spend by year <span class="sub">· stacked by category</span></h2>
+          <div class="chartbox"><canvas id="chYears"></canvas></div>
+          <div class="legend" id="legYears"></div>
+          <div class="flowcap" id="capYears"></div>
+        </div>
+      </div>
+
+      <div class="charts2">
+        <div class="card">
+          <h2>Cost per person per day <span class="sub">· the comparable number</span></h2>
+          <div class="chartbox"><canvas id="chCpppd"></canvas></div>
+          <div class="flowcap">Total spend ÷ (nights × travellers). This is the figure that survives
+            comparing a 3-night city break to a 15-night trip — raw yearly totals do not.</div>
+        </div>
+        <div class="card">
+          <h2>Category share over time <span class="sub">· % of spend</span></h2>
+          <div class="chartbox"><canvas id="chShare"></canvas></div>
+          <div class="flowcap" id="capShare"></div>
+        </div>
+      </div>
+
+      <div class="charts2">
+        <div class="card">
+          <h2>Destinations <span class="sub">· ranked by cost per person per day</span></h2>
+          <div id="destTable"></div>
+        </div>
+        <div class="card">
+          <h2>Value map <span class="sub">· enjoyment vs burn rate</span></h2>
+          <div class="chartbox"><canvas id="chValue"></canvas></div>
+          <div class="flowcap">X = cost per person per day, Y = your 1–5 rating. Top-left is the
+            sweet spot: trips you loved that cost little per day. Rate a trip to place it here.</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Trip cost estimator <span class="sub">· priced from your own history</span></h2>
+        <div class="estgrid">
+          <div><label for="estDest">Destination</label><select id="estDest" class="mono"></select></div>
+          <div><label for="estNights">Nights</label><input id="estNights" class="mono" type="number" min="1" value="7" /></div>
+          <div><label for="estPeople">Travellers</label><input id="estPeople" class="mono" type="number" min="1" /></div>
+          <div><label for="estInfl">Uplift %/yr</label><input id="estInfl" class="mono" type="number" value="4" /></div>
+        </div>
+        <div class="estout" id="estOut"></div>
+        <div class="flowcap">Takes your actual per-person-per-day rate for that destination, ages it
+          forward from the year you went at the uplift you set, and adds a flight allowance from the
+          same trips. Not a forecast — a sanity check before you book.</div>
+      </div>
+
+      <div id="lifetime"></div>
+    </div>
+
+    <!-- =========================================================
+         YEARS — one calendar year at a time
+    ========================================================== -->
+    <div id="yearView">
+      <div class="kpis" id="yrKpis"></div>
+
+      <div class="charts2">
+        <div class="card full">
+          <h2 id="yrBvaTitle">Budget vs actual</h2>
+          <div id="yrTrips"></div>
+        </div>
+      </div>
+
+      <div class="charts2">
+        <div class="card">
+          <h2>Where it went <span class="sub">· this year</span></h2>
+          <div class="chartbox sm"><canvas id="chYrCats"></canvas></div>
+          <div class="legend" id="legYrCats"></div>
+        </div>
+        <div class="card">
+          <h2>Committed vs on-the-ground <span class="sub">· by month paid</span></h2>
+          <div class="chartbox sm"><canvas id="chYrMonths"></canvas></div>
+          <div class="flowcap">Prepaid (flights, hotels, insurance — booked ahead) versus what you
+            actually spent while away. The gap is your cash-flow shape: booking months hurt long
+            before the holiday does.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         TRIPS — one trip at a time, with the editable ledger
+    ========================================================== -->
+    <div id="tripView">
+      <!-- Row 1 holds only the two things that genuinely belong on one line:
+           the picker and the actions. Row 2 carries the trip's facts as a
+           single wrapping line. The previous version put the picker, a full
+           date range and the party details into three equal grid columns —
+           but "2026-05-02 → 2026-05-12 · 10 nights" is far wider than a
+           <select> needs to be, so the columns could not all fit and wrapped
+           raggedly. Equal columns were the wrong shape for unequal content. -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="triphead">
+          <select id="tripPick" class="tsel" title="Choose a trip"></select>
+          <div class="btns">
+            <button class="btn" id="editTripBtn">Edit</button>
+            <button class="btn danger" id="delTripBtn">Delete</button>
+          </div>
+        </div>
+        <div class="tripmeta" id="tripMeta"></div>
+      </div>
+
+      <div class="kpis" id="tripKpis"></div>
+
+      <div class="tripmain">
+        <div class="card">
+          <h2>Ledger <span class="sub">· every line item</span></h2>
+          <div class="ledger" id="tripLedger"></div>
+          <div class="addrow">
+            <input id="niDate" type="date" class="mono w-date" title="Date the money was spent" />
+            <select id="niCat" class="mono w-cat" title="Category"></select>
+            <input id="niNote" type="text" class="grow" placeholder="note (e.g. dinner, Trattoria da Enzo)" />
+            <div class="amtwrap w-amt"><span class="cur" id="niSym">£</span><input id="niAmt" class="mono" type="number" step="0.01" placeholder="0.00" title="Amount as spent" /></div>
+            <select id="niCur" class="mono w-cur" title="Currency it was paid in"></select>
+            <input id="niFx" class="mono w-fx" type="number" step="0.0001" title="Rate: base currency per 1 unit" />
+            <label class="chk" title="Paid ahead of the trip rather than while away"><input id="niPre" type="checkbox" /> prepaid</label>
+            <label class="chk" title="A planned figure, not money that has actually moved"><input id="niEst" type="checkbox" /> estimate</label>
+            <button class="addbtn" id="niAdd" title="Add line item">+</button>
+          </div>
+          <div class="flowcap" id="fxHint"></div>
+        </div>
+        <div class="card">
+          <h2>Breakdown</h2>
+          <div class="chartbox sm"><canvas id="chTripCats"></canvas></div>
+          <div class="legend" id="legTripCats"></div>
+          <h2 style="margin-top:18px">Paid in <span class="sub">· currency mix</span></h2>
+          <div class="minis" id="tripCurrencies"></div>
+          <h2 style="margin-top:18px">Daily burn <span class="sub">· on-the-ground only</span></h2>
+          <div class="chartbox xs"><canvas id="chTripBurn"></canvas></div>
+          <div class="flowcap" id="capBurn"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<!-- ===== Action sheet (phones) — the header buttons, out of the way ===== -->
+<div class="modal-bg sheetbg" id="menuSheet">
+  <div class="sheet" role="menu" aria-label="Actions">
+    <button class="sheetrow" data-do="newTripBtn"><span class="ico">+</span>New trip</button>
+    <button class="sheetrow" data-do="setBtn"><span class="ico">⚙</span>Currencies &amp; rates</button>
+    <button class="sheetrow" data-do="ratesBtn"><span class="ico">↻</span>Update rates online</button>
+    <div class="sheetsep"></div>
+    <!-- Not a .sheetrow: it is a control, not an action, so it does not close
+         the sheet on touch and is not part of the click-through wiring. -->
+    <label class="sheetsel"><span class="ico">◎</span>Show amounts in
+      <select id="dispCurM" class="mono" aria-label="Show amounts in"></select></label>
+    <div class="sheetsep"></div>
+    <button class="sheetrow" data-do="saveLink"><span class="ico">⬇</span>Save a backup</button>
+    <button class="sheetrow" data-do="loadBtn"><span class="ico">⬆</span>Load a backup</button>
+    <button class="sheetrow" data-do="restoreBtn"><span class="ico">⟲</span>Restore a snapshot</button>
+    <button class="btn sheetcancel" data-close="menuSheet">Cancel</button>
+  </div>
+</div>
+
+<!-- ===== Trip create/edit modal ===== -->
+<div class="modal-bg" id="tripModal">
+  <div class="modal">
+    <h3 id="tripModalTitle">New trip</h3>
+    <div class="sub">Nights are derived from the dates, and everything per-day divides by
+      nights × travellers — so these four fields decide whether the analytics mean anything.</div>
+    <div class="err" id="tripErr"></div>
+    <div class="fgrid">
+      <div class="wide"><label for="tfName">Name</label><input id="tfName" placeholder="e.g. Andalusia" /></div>
+      <div><label for="tfCountry">Country</label><input id="tfCountry" placeholder="e.g. Spain" /></div>
+      <div><label for="tfPurpose">Purpose</label>
+        <select id="tfPurpose">
+          <option>leisure</option><option>city break</option><option>family</option>
+          <option>ski</option><option>work</option><option>other</option>
+        </select></div>
+      <div><label for="tfStart">Start</label><input id="tfStart" type="date" class="mono" /></div>
+      <div><label for="tfEnd">End</label><input id="tfEnd" type="date" class="mono" /></div>
+      <div><label for="tfTravellers">Travellers</label><input id="tfTravellers" type="number" min="1" class="mono" /></div>
+      <div><label for="tfBudget">Budget</label><input id="tfBudget" type="number" step="0.01" class="mono" placeholder="0.00" /></div>
+      <div><label for="tfCurrency">Default currency</label><select id="tfCurrency" class="mono"></select></div>
+      <div><label for="tfRating">Rating (1–5, blank if not been yet)</label><input id="tfRating" type="number" min="1" max="5" class="mono" /></div>
+      <div class="wide"><label for="tfNote">Note</label><input id="tfNote" placeholder="optional" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" data-close="tripModal">Cancel</button>
+      <button class="btn primary" id="tripSave">Save trip</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Currency settings modal ===== -->
+<div class="modal-bg" id="setModal">
+  <div class="modal">
+    <h3>Currencies &amp; default rates</h3>
+    <div class="sub">Rate = how many units of the base currency one unit is worth
+      (EUR 0.85 means €1 = £0.85). These are <strong>defaults for the entry form only</strong>.
+      Each line item stores the rate it was entered with, so changing a rate here never
+      restates a past trip.</div>
+    <div class="err" id="setErr"></div>
+    <div id="curRows"></div>
+    <button class="btn" id="addCurBtn" style="margin-top:6px">+ Add currency</button>
+    <div class="fgrid" style="margin-top:14px">
+      <div><label for="setBase">Base currency</label><select id="setBase" class="mono"></select>
+        <div class="note" id="baseNote" style="margin-top:5px"></div></div>
+      <div><label for="setTrav">Default travellers</label><input id="setTrav" class="mono" type="number" min="1" /></div>
+    </div>
+    <div class="note">Nothing here is fetched from the internet — this app makes no outbound
+      requests. Update rates by hand when they drift enough to matter.</div>
+    <div class="modal-actions">
+      <button class="btn" data-close="setModal">Cancel</button>
+      <button class="btn primary" id="setSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Snapshot restore modal ===== -->
+<div class="modal-bg" id="snapModal">
+  <div class="modal">
+    <h3>Restore a snapshot</h3>
+    <div class="sub">One snapshot is written automatically before every change; the newest 30
+      are kept. Restoring snapshots the current state first, so a restore is itself undoable.</div>
+    <div id="snapList"></div>
+    <div class="modal-actions"><button class="btn" data-close="snapModal">Close</button></div>
+  </div>
+</div>
+
+<script>
+/* =============================================================
+   SECTION 1 — categories
+   One place defines the category list, its label and its colour.
+   Donuts, stacked bars, legends and the entry dropdown are all
+   generated from this. Keep in sync with CATEGORIES in server.js
+   (the server validates against its own copy, so a category
+   added here without adding it there will be rejected on save).
+============================================================= */
+// `pre` = prepaid by default: it pre-ticks the prepaid box on the entry row.
+// Mirrors PREPAID_BY_DEFAULT in server.js, which is the fallback when no
+// explicit flag is sent. Either way it is only a default — the checkbox wins.
+const CATS = [
+  { id:"flights",       label:"Flights",        css:"--flights",   pre:true  },
+  { id:"accommodation", label:"Accommodation",  css:"--stay",      pre:true  },
+  { id:"restaurants",   label:"Restaurants",    css:"--food",      pre:false },
+  { id:"activities",    label:"Activities",     css:"--activities",pre:false },
+  // One bucket for pass, instructor and hire. These are trip-type-specific
+  // costs, and the category list is a global dimension — splitting them three
+  // ways would add bands that are empty in every non-ski year and push adjacent
+  // colours below the readable threshold. The per-line note carries the detail.
+  { id:"ski",           label:"Ski",            css:"--ski",       pre:false },
+  { id:"transport",     label:"Transport",      css:"--transport", pre:false },
+  { id:"carrental",     label:"Car rental",     css:"--carrental", pre:true  },
+  { id:"shopping",      label:"Shopping",       css:"--shopping",  pre:false },
+  // Medical sits after Insurance, not next to Shopping: mulberry against clay
+  // was the closest colour pair in the whole stack and the two bands blurred
+  // together. Order here is display-only — the stored ids are unaffected.
+  { id:"insurance",     label:"Insurance/fees", css:"--insurance", pre:true  },
+  { id:"medical",       label:"Medical",        css:"--medical",   pre:false },
+  { id:"misc",          label:"Misc",           css:"--misc",      pre:false },
+];
+const CAT = Object.fromEntries(CATS.map(x => [x.id, x]));
+// Read a CSS variable so JS charts and the stylesheet never drift apart.
+const c = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const catColor = (id) => c(CAT[id] ? CAT[id].css : "--misc");
+
+/* =============================================================
+   SECTION 2 — API client
+   Every mutation re-fetches the whole store and re-renders. The
+   store is a few hundred KB at most, and one source of truth
+   beats clever local patching that can drift from the disk.
+============================================================= */
+let DATA = { settings:{ baseCurrency:"GBP", currencies:[] }, trips:[] };
+
+async function api(method, path, body){
+  const r = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type":"application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let j = {};
+  try { j = await r.json(); } catch(_) {}
+  if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+}
+async function reload(){ DATA = await api("GET","/api/data"); }
+
+/* =============================================================
+   SECTION 3 — money & currency helpers
+============================================================= */
+const BASE   = () => DATA.settings.baseCurrency || "GBP";
+// The currency you are LOOKING at. The ledger is always stored in BASE; this
+// only changes what is rendered, so no stored figure is ever rewritten.
+const DISP   = () => state.display || BASE();
+const CURS   = () => DATA.settings.currencies || [];
+const curOf  = (code) => CURS().find(x => x.code === code) || { code, symbol:code, rate:1 };
+const baseSym= () => curOf(BASE()).symbol || "";
+const dispSym= () => curOf(DISP()).symbol || "";
+
+// The rate to use when re-expressing THIS trip's base-currency spend in `code`.
+//
+// Derived, not typed: if the trip has any lines actually paid in `code`, their
+// frozen fx IS the rate that was in force at the time — better evidence than
+// anything you could type in later, and it costs no extra entry. Only when a
+// trip has no such line does it fall back to today's default, which is the one
+// case where the figure genuinely is an approximation.
+function tripRate(trip, code){
+  if (code === BASE()) return 1;
+  const seen = (trip.items || []).filter(i => i.currency === code && i.fx > 0);
+  if (seen.length) return seen.reduce((a,i) => a + i.fx, 0) / seen.length;
+  return curOf(code).rate || 1;
+}
+// Party size used to pre-fill a new trip and the estimator. Read from settings
+// in both places so there is exactly one number to change — it used to be
+// hardcoded twice in the markup and once in JS, where the JS silently won.
+const DEF_TRAVELLERS = () => DATA.settings.defaultTravellers || 2;
+
+// Base-currency formatters. Aggregates round to whole units (pennies in a
+// yearly total are noise); individual line items keep 2dp.
+const money  = (n) => dispSym() + Math.round(n).toLocaleString("en-GB");
+const money2 = (n) => dispSym() + n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});
+// Format in an arbitrary currency (used for the "as paid" line under an item).
+const inCur  = (n, code) => curOf(code).symbol + n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct    = (n) => (n>=0?"+":"") + n.toFixed(0) + "%";
+
+const dayMs = 86400000;
+const iso = (d) => new Date(d).toISOString().slice(0,10);
+const addDays = (dstr, n) => iso(new Date(dstr).getTime() + n*dayMs);
+const nightsBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / dayMs);
+const today = () => iso(Date.now());
+
+// Human date range. Two full ISO dates ("2026-05-02 → 2026-05-12") are 24
+// characters of mono text for information you can read in 14 — and that extra
+// width is what forced the trip header's columns apart. The year is printed
+// once when both ends share it.
+function fmtRange(s, e){
+  const d = (x, withYear) => new Date(x + "T00:00:00").toLocaleDateString("en-GB",
+    { day:"numeric", month:"short", ...(withYear ? { year:"numeric" } : {}) });
+  return s.slice(0,4) === e.slice(0,4)
+    ? `${d(s,false)} → ${d(e,true)}`      // 2 May → 12 May 2026
+    : `${d(s,true)} → ${d(e,true)}`;      // 28 Dec 2025 → 3 Jan 2026
+}
+
+/* =============================================================
+   SECTION 4 — derived metrics
+   Nothing here is stored. Correct one restaurant bill and every
+   chart it feeds corrects itself on the next render.
+============================================================= */
+// THE central rule of this app: an estimated line is a guess, and a guess never
+// counts as spend. Estimated items are split off here into `planned` and their
+// own per-category bucket, and they touch nothing else — not the currency mix,
+// not prepaid/on-the-ground, not the actual total. Views that describe history
+// read `actual`; views that describe a plan read `projected`. There is no third
+// option, which is what stops a number invented in a hotel lobby from quietly
+// becoming part of your 2026 spend.
+function tripStats(t){
+  const nights = Math.max(0, nightsBetween(t.start, t.end));
+
+  // --- display conversion ---------------------------------------------------
+  // Everything downstream reads the figures this function returns, so doing the
+  // conversion here and nowhere else means every KPI, chart, table and total
+  // follows the display currency for free — and amountBase on disk is never
+  // touched, which is what makes switching currencies non-destructive.
+  //
+  // The one rule that matters: AS-PAID WINS. A line you actually paid €120 for
+  // shows as exactly €120 in the EUR view. Round-tripping it back through GBP
+  // at a different rate would turn a fact you know into €118.42, which is the
+  // classic way this kind of feature starts lying.
+  const disp = DISP(), atBase = disp === BASE();
+  const rate = atBase ? 1 : tripRate(t, disp);
+  const conv = (it) => atBase ? it.amountBase
+             : it.currency === disp ? it.amount           // as-paid, verbatim
+             : it.amountBase / rate;                      // converted at this trip's rate
+
+  const byCat = {}, byCatEst = {}, byCur = {};
+  let actual = 0, planned = 0, prepaid = 0, onground = 0, estCount = 0;
+  for (const it of t.items) {
+    const v = conv(it);
+    if (it.estimated) {
+      byCatEst[it.category] = (byCatEst[it.category] || 0) + v;
+      planned += v; estCount++;
+      continue;                                    // guesses stop here
+    }
+    byCat[it.category] = (byCat[it.category] || 0) + v;
+    // Currency mix is tracked in BOTH units: the base value for share-of-spend,
+    // and the original for "you spent 640 lei in Romania", which is the number
+    // you actually recognise from your bank app.
+    const b = byCur[it.currency] || (byCur[it.currency] = { base:0, orig:0 });
+    b.base += v; b.orig += it.amount;   // .base follows the display currency, .orig is as paid
+    actual += v;
+    if (it.prepaid) prepaid += v; else onground += v;
+  }
+  const projected = actual + planned;
+  const personDays = nights * (t.travellers || 1);
+  return {
+    ...t, nights, byCat, byCatEst, byCur,
+    // budget is stored in base like everything else, so it converts too —
+    // otherwise a EUR view would compare euros against a pound budget.
+    budget: atBase ? t.budget : Math.round((t.budget / rate) * 100) / 100,
+    conv, dispRate: rate,          // the ledger rows need the same conversion
+    // true when this trip had no line paid in the display currency, so its
+    // figures lean on today's default rate rather than one observed at the time
+    rateEstimated: !atBase && !(t.items || []).some(i => i.currency === disp && i.fx > 0),
+    // Charts that need to walk individual lines must use THIS, never t.items.
+    // Two charts previously filtered t.items directly and silently counted
+    // estimates as spend — the aggregates were right, the per-line loops were
+    // not. Anything reading raw t.items is display-only (the ledger, counts).
+    real: t.items.filter(i => !i.estimated),
+    actual, planned, projected, prepaid, onground, personDays, estCount,
+    // Home from the trip and still holding guesses: the ledger is unfinished.
+    // Surfaced loudly, because this is how estimates rot into fake history.
+    stale: t.end < today() && planned > 0,
+    year: +t.start.slice(0,4),
+    future: t.start > today(),                     // booked but not yet travelled
+    perNight: nights ? projected / nights : 0,
+    cpppd: personDays ? actual / personDays : 0,       // history — actual only
+    cpppdProj: personDays ? projected / personDays : 0,// planning — includes guesses
+    // Same figure with flights stripped out. Flights are a step cost that does
+    // not scale with trip length, so leaving them in makes short trips look
+    // artificially expensive per day.
+    cpppdEx: personDays ? (actual - (byCat.flights||0)) / personDays : 0,
+    variance: t.budget ? (projected - t.budget) / t.budget * 100 : null,
+  };
+}
+const stats = () => DATA.trips.map(tripStats).sort((a,b) => a.start.localeCompare(b.start));
+const years = () => [...new Set(stats().map(t => t.year))].sort();
+
+/* =============================================================
+   SECTION 5 — chart helpers
+============================================================= */
+const CH = {};                                   // live chart instances by canvas id
+function mk(id, cfg){
+  if (CH[id]) CH[id].destroy();                  // Chart.js refuses to reuse a canvas
+  const el = document.getElementById(id);
+  if (!el) return;
+  CH[id] = new Chart(el.getContext("2d"), cfg);
+}
+const gridOpts = () => ({
+  grid:{ color:c("--hair") }, ticks:{ color:c("--muted"), font:{ size:11 } },
+  border:{ color:c("--line") }
+});
+const baseOpts = (extra={}) => Object.assign({
+  responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{ display:false } },
+  scales:{ x:gridOpts(), y:gridOpts() },
+}, extra);
+function legendInto(elId, entries){
+  document.getElementById(elId).innerHTML = entries.map(e =>
+    `<span><i class="dot" style="background:${e.color}"></i>${e.label}${e.extra?" "+e.extra:""}</span>`).join("");
+}
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/* =============================================================
+   SECTION 6 — router / state
+============================================================= */
+// Inline SVGs rather than an icon font: the app ships no external assets and
+// must render with the internet down. Hidden on desktop by CSS, shown in the
+// bottom bar on phones.
+const ICONS = {
+  overview: '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>',
+  year:     '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/>',
+  trip:     '<path d="M4 8h16v12H4z"/><path d="M9 8V5h6v3"/><path d="M4 14h16"/>',
+  // A proper cog: a toothed ring with a hub. The previous version was a circle
+  // with radiating spokes, which at 22px read as a sun rather than a setting.
+  more:     '<circle cx="12" cy="12" r="3.1"/>'
+          + '<path d="M19.5 12a7.5 7.5 0 0 0-.13-1.38l2.02-1.55-1.9-3.29-2.38.93a7.5 7.5 0 0 0'
+          + '-2.39-1.38L14.4 2.8h-3.8l-.32 2.53a7.5 7.5 0 0 0-2.39 1.38l-2.38-.93-1.9 3.29'
+          + ' 2.02 1.55a7.5 7.5 0 0 0 0 2.76l-2.02 1.55 1.9 3.29 2.38-.93a7.5 7.5 0 0 0 2.39 1.38'
+          + 'l.32 2.53h3.8l.32-2.53a7.5 7.5 0 0 0 2.39-1.38l2.38.93 1.9-3.29-2.02-1.55'
+          + 'A7.5 7.5 0 0 0 19.5 12z"/>',
+};
+const VIEWS = [ ["overview","Overview"], ["year","By year"], ["trip","Trips"] ];
+let state = { view:"overview", year:null, tripId:null, display:null }; // display:null = show in base
+
+function renderNav(){
+  const svg = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg>`;
+  document.getElementById("viewNav").innerHTML =
+    VIEWS.map(([id,label]) =>
+      `<button class="vtab ${state.view===id?"on":""}" data-v="${id}" aria-label="${label}">
+         ${svg(id)}${label}</button>`).join("")
+    + `<button class="vtab navmore" id="navMoreBtn" aria-label="Settings and backups"
+               aria-haspopup="menu">${svg("more")}Settings</button>`;
+  // Only tabs carrying data-v route; the fourth one opens the sheet instead.
+  document.querySelectorAll("#viewNav .vtab[data-v]").forEach(b =>
+    b.onclick = () => { state.view = b.dataset.v; render(); });
+  document.getElementById("navMoreBtn").onclick = () =>
+    document.getElementById("menuSheet").classList.add("open");
+
+  const tabs = document.getElementById("tabs");
+  if (state.view === "year") {
+    tabs.style.display = "flex";
+    tabs.innerHTML = years().map(y =>
+      `<button class="tab ${state.year===y?"on":""}" data-y="${y}">${y}</button>`).join("");
+    tabs.querySelectorAll(".tab").forEach(b =>
+      b.onclick = () => { state.year = +b.dataset.y; render(); });
+  } else {
+    tabs.style.display = "none";
+  }
+}
+
+function render(){
+
+  // Display-currency picker. Rebuilt each render so a currency added in
+  // settings appears here without a reload.
+  const dc = document.getElementById("dispCur");
+  const dcm = document.getElementById("dispCurM");
+  [dc, dcm].forEach(el => {
+    el.innerHTML = CURS().map(x => `<option value="${esc(x.code)}">${esc(x.code)}</option>`).join("");
+    el.value = DISP();
+    el.onchange = () => { state.display = el.value === BASE() ? null : el.value; render(); };
+  });
+
+  // Say so, loudly, whenever the figures on screen are not the ones on disk.
+  const cb = document.getElementById("convBar");
+  const converted = DISP() !== BASE();
+  cb.classList.toggle("show", converted);
+  if (converted) {
+    const S0 = stats();
+    const guessed = S0.filter(t => t.rateEstimated).length;
+    cb.innerHTML = `Showing <b>${DISP()}</b>. The ledger is kept in <b>${BASE()}</b> — these are
+      converted figures, not what you paid. Each trip converts at the rate its own
+      ${DISP()} spending was booked at; amounts actually paid in ${DISP()} are shown exactly as paid.`
+      + (guessed ? ` <b>${guessed} trip${guessed>1?"s have":" has"}</b> no ${DISP()} spending, so ${guessed>1?"they use":"it uses"} today's rate.` : "");
+  }
+
+  const S = stats();
+
+  // Empty store: show the first-run panel instead of eight blank charts.
+  const empty = S.length === 0;
+  document.getElementById("firstRun").style.display = empty ? "" : "none";
+  document.getElementById("app").style.display      = empty ? "none" : "";
+  if (empty) return;
+
+  const yrs = years();
+  if (!yrs.includes(state.year)) state.year = yrs[yrs.length-1];
+  if (!S.find(t => t.id === state.tripId)) state.tripId = S[S.length-1].id;
+
+  // Nag about finished trips that still hold guesses, on every view. Without
+  // this the simple estimate flag rots: you get home, forget the three lines
+  // you invented in a hotel lobby, and they quietly become part of your history.
+  const stale = S.filter(t => t.stale);
+  const bar = document.getElementById("staleBar");
+  bar.classList.toggle("show", stale.length > 0);
+  if (stale.length) {
+    const n = stale.reduce((a,t) => a + t.estCount, 0);
+    bar.innerHTML = `<b>${n} estimated line${n>1?"s":""} on ${stale.length} finished trip${stale.length>1?"s":""}</b>
+      — ${money(stale.reduce((a,t)=>a+t.planned,0))} of guesses on ${stale.map(t=>esc(t.name)).join(", ")}.
+      These are excluded from every total until you correct them: open the trip,
+      fix each amount and untick <em>estimate</em>.
+      ${stale.map(t=>`<a data-go="${t.id}">${esc(t.name)}</a>`).join(" · ")}`;
+    bar.querySelectorAll("[data-go]").forEach(a =>
+      a.onclick = () => { state.tripId = a.dataset.go; state.view = "trip"; render(); });
+  }
+
+  renderNav();
+  document.getElementById("overviewView").style.display = state.view==="overview" ? "" : "none";
+  document.getElementById("yearView").style.display     = state.view==="year"     ? "" : "none";
+  document.getElementById("tripView").style.display     = state.view==="trip"     ? "" : "none";
+  if (state.view==="overview") renderOverview(S);
+  if (state.view==="year")     renderYear(S);
+  if (state.view==="trip")     renderTrip(S);
+
+  document.getElementById("foot").innerHTML =
+    `${S.reduce((a,t)=>a+t.items.length,0)} line items across ${S.length} trips. Every figure is derived
+     at render time — nothing aggregated is stored, so a corrected line instantly corrects every chart it feeds.`;
+}
+
+/* =============================================================
+   SECTION 7 — OVERVIEW
+============================================================= */
+function renderOverview(S){
+  const past = S.filter(t => !t.future);
+  const lifetime   = past.reduce((a,t) => a + t.actual, 0);
+  const nights     = past.reduce((a,t) => a + t.nights, 0);
+  const personDays = past.reduce((a,t) => a + t.personDays, 0);
+  const countries  = new Set(past.map(t => t.country).filter(Boolean)).size;
+  const fut        = S.filter(t => t.future);
+  const committed  = fut.reduce((a,t) => a + t.actual, 0);
+
+  const yrs = years();
+  const totalFor = (y) => S.filter(t => t.year===y && !t.future).reduce((a,t)=>a+t.actual,0);
+  const yA = yrs[yrs.length-1], yB = yrs[yrs.length-2];
+  const thisYear = totalFor(yA), prevYear = yB ? totalFor(yB) : 0;
+  const yoy = prevYear ? (thisYear - prevYear)/prevYear*100 : 0;
+
+  document.getElementById("ovKpis").innerHTML = [
+    ["Lifetime holiday spend", money(lifetime), `${past.length} trips since ${yrs[0]}`, ""],
+    ["Nights away", nights, `${countries} countries · ${past.length?(nights/past.length).toFixed(1):0} nights avg`, ""],
+    ["Cost per person / day", personDays ? money(lifetime/personDays) : "—", "all trips, all years", ""],
+    [ yB ? `${yA} vs ${yB}` : `${yA}`, money(thisYear),
+      yB ? pct(yoy)+" year on year" : "first year on record", yB ? (yoy>0?"up":"down") : "" ],
+  ].map(([l,v,d,cls]) =>
+    `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>
+     <div class="kdelta ${cls}">${d}</div></div>`).join("");
+
+  // ---- stacked spend by year ----
+  mk("chYears", { type:"bar", data:{ labels:yrs.map(String), datasets: CATS.map(cat => ({
+      label: cat.label,
+      data: yrs.map(y => S.filter(t => t.year===y).reduce((a,t)=>a+(t.byCat[cat.id]||0),0)),
+      backgroundColor: catColor(cat.id), borderWidth:0 })) },
+    options: baseOpts({
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        label:(x)=>`${x.dataset.label}: ${money(x.raw)}`,
+        footer:(xs)=>"Total: " + money(xs.reduce((a,x)=>a+x.raw,0)) } } },
+      scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
+               y:Object.assign(gridOpts(),{stacked:true,
+                 ticks:{ color:c("--muted"), font:{size:11},
+                   callback:(v)=> v>=1000 ? baseSym()+(v/1000)+"k" : baseSym()+v }}) } })});
+  legendInto("legYears", CATS.map(cat => ({ label:cat.label, color:catColor(cat.id) })));
+
+  const gapYears = [...Array(yrs[yrs.length-1]-yrs[0]+1).keys()]
+      .map(i => yrs[0]+i).filter(y => !yrs.includes(y));
+  // No mention of estimated spend anywhere on this page: the overview is the
+  // historical record (lifetime spend, cost per person per day, the value map)
+  // and a plan has no business appearing in it. Committed money is real and
+  // stays. Anything still a guess lives on its trip page.
+  document.getElementById("capYears").textContent =
+    (fut.length ? `Includes ${money(committed)} already paid for ${fut.map(t=>t.name).join(", ")} — booked but not yet travelled. ` : "")
+    + (gapYears.length ? `No trips recorded in ${gapYears.join(", ")}.` : "");
+
+  // ---- cost per person per day trend ----
+  mk("chCpppd", { type:"line", data:{ labels:yrs.map(String), datasets:[{
+      data: yrs.map(y => {
+        const ts = S.filter(t => t.year===y && !t.future);
+        const tot = ts.reduce((a,t)=>a+t.actual,0), pd = ts.reduce((a,t)=>a+t.personDays,0);
+        return pd ? tot/pd : null; }),
+      borderColor:c("--accent"), backgroundColor:"rgba(47,111,98,.10)", fill:true, tension:.3,
+      pointBackgroundColor:c("--accent"), pointRadius:4, spanGaps:true }]},
+    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        label:(x)=> x.raw==null ? "no trips" : money(x.raw)+" per person per day" }}},
+      scales:{ x:Object.assign(gridOpts(),{grid:{display:false}}),
+               y:Object.assign(gridOpts(),{ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v}}) } })});
+
+  // ---- category share over time (100% stacked) ----
+  mk("chShare", { type:"bar", data:{ labels:yrs.map(String), datasets: CATS.map(cat => ({
+      label: cat.label,
+      data: yrs.map(y => {
+        const ts = S.filter(t => t.year===y);
+        const tot = ts.reduce((a,t)=>a+t.actual,0);
+        return tot ? ts.reduce((a,t)=>a+(t.byCat[cat.id]||0),0)/tot*100 : 0; }),
+      backgroundColor: catColor(cat.id), borderWidth:0 })) },
+    options: baseOpts({
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        label:(x)=>`${x.dataset.label}: ${x.raw.toFixed(1)}%` } } },
+      scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
+               y:Object.assign(gridOpts(),{stacked:true,max:100,
+                 ticks:{color:c("--muted"),font:{size:11},callback:(v)=>v+"%"}}) } })});
+  const shareOf = (y,cid) => { const ts=S.filter(t=>t.year===y); const tot=ts.reduce((a,t)=>a+t.actual,0);
+    return tot ? ts.reduce((a,t)=>a+(t.byCat[cid]||0),0)/tot*100 : 0; };
+  document.getElementById("capShare").textContent = yrs.length > 1
+    ? `Flights were ${shareOf(yrs[0],"flights").toFixed(0)}% of spend in ${yrs[0]} and ${shareOf(yrs[yrs.length-1],"flights").toFixed(0)}% in ${yrs[yrs.length-1]}.`
+    : "A second year of data will make this chart worth reading.";
+
+  // ---- destinations table ----
+  const byDest = {};
+  past.forEach(t => {
+    const key = t.country || t.name;
+    const d = byDest[key] || (byDest[key] = { trips:0, nights:0, total:0, pd:0, last:"" });
+    d.trips++; d.nights += t.nights; d.total += t.actual; d.pd += t.personDays;
+    if (t.start.slice(0,4) > d.last) d.last = t.start.slice(0,4);
+  });
+  const rows = Object.entries(byDest).map(([k,v]) => ({ country:k, ...v, cpppd: v.pd ? v.total/v.pd : 0 }))
+                     .sort((a,b)=>b.cpppd-a.cpppd);
+  const median = rows.length ? rows[Math.floor(rows.length/2)].cpppd : 0;
+  document.getElementById("destTable").innerHTML = rows.length
+    ? `<table class="reflow"><thead><tr><th>Country</th><th>Trips</th><th>Nights</th><th>Total</th><th>/pp/day</th></tr></thead>
+       <tbody>${rows.map(r=>`<tr><td>${esc(r.country)} <span class="muted" style="font-size:11px">${r.last}</span></td>
+         <td data-l="Trips">${r.trips}</td><td data-l="Nights">${r.nights}</td><td data-l="Total">${money(r.total)}</td>
+         <td data-l="Per person / day" style="color:${r.cpppd>median?c("--warn"):c("--good")}">${money(r.cpppd)}</td></tr>`).join("")}
+       </tbody></table>`
+    : `<div class="empty">No completed trips yet.</div>`;
+
+  // ---- value map ----
+  const rated = past.filter(t => t.rating);
+  mk("chValue", { type:"bubble", data:{ datasets:[{
+      data: rated.map(t => ({ x:t.cpppd, y:t.rating, r:Math.max(4, Math.sqrt(t.actual)/7), name:t.name, total:t.actual })),
+      backgroundColor:"rgba(47,111,98,.35)", borderColor:c("--accent"), borderWidth:1 }]},
+    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        label:(x)=>`${x.raw.name}: ${money(x.raw.x)}/pp/day · rated ${x.raw.y}/5 · ${money(x.raw.total)} total` }}},
+      scales:{ x:Object.assign(gridOpts(),{ title:{display:true,text:"per person per day",color:c("--muted"),font:{size:11}},
+                 ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v} }),
+               y:Object.assign(gridOpts(),{ min:0.5, max:5.5,
+                 ticks:{color:c("--muted"),font:{size:11},stepSize:1,callback:(v)=> Number.isInteger(v)? v+"★" : ""} }) } })});
+
+  // ---- lifetime strip ----
+  const best    = rated.slice().sort((a,b)=> (b.rating/(b.cpppd||1)) - (a.rating/(a.cpppd||1)))[0];
+  const dearest = past.slice().sort((a,b)=>b.actual-a.actual)[0];
+  document.getElementById("lifetime").innerHTML = [
+    ["Total spent", money(lifetime)],
+    ["Trips", past.length],
+    ["Nights away", nights],
+    ["Priciest trip", dearest ? `${esc(dearest.name)} · ${money(dearest.actual)}` : "—"],
+    ["Best value", best ? `${esc(best.name)} · ${money(best.cpppd)}/pp/day` : "rate a trip"],
+  ].map(([l,v]) => `<div><div class="ll">${l}</div><div class="lv">${v}</div></div>`).join("");
+
+  renderEstimator(past);
+}
+
+// ---- estimator: prices a future trip from your own history ----
+let estWired = false;
+function renderEstimator(past){
+  const sel = document.getElementById("estDest");
+  const dests = [...new Set(past.map(t => t.country || t.name).filter(Boolean))].sort();
+  if (!dests.length) {
+    document.getElementById("estOut").innerHTML = `<div class="det">Record a completed trip to price the next one.</div>`;
+    return;
+  }
+  const keep = sel.value;
+  sel.innerHTML = dests.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  sel.value = dests.includes(keep) ? keep : dests[0];
+  if (!estWired) {
+    // Seeded once, not on every render — otherwise typing a different party
+    // size here would be overwritten the moment the estimator re-ran.
+    document.getElementById("estPeople").value = DEF_TRAVELLERS();
+    // Assigned rather than addEventListener so re-wiring after a settings save
+    // cannot stack duplicate handlers.
+    ["estDest","estNights","estPeople","estInfl"].forEach(id =>
+      document.getElementById(id).oninput = () => renderEstimator(stats().filter(t=>!t.future)));
+    estWired = true;
+  }
+
+  const dest   = sel.value;
+  const nights = Math.max(1, +document.getElementById("estNights").value || 1);
+  const people = Math.max(1, +document.getElementById("estPeople").value || 1);
+  const infl   = (+document.getElementById("estInfl").value || 0) / 100;
+
+  const ts = past.filter(t => (t.country || t.name) === dest);
+  const pd = ts.reduce((a,t)=>a+t.personDays,0);
+  if (!pd) { document.getElementById("estOut").innerHTML = `<div class="det">Not enough data for ${esc(dest)}.</div>`; return; }
+
+  const exFlights = ts.reduce((a,t)=>a + (t.actual - (t.byCat.flights||0)), 0) / pd;   // per person per day, on the ground
+  const flightPP  = ts.reduce((a,t)=>a + (t.byCat.flights||0)/(t.travellers||1), 0) / ts.length;
+  const lastYear  = Math.max(...ts.map(t=>t.year));
+  const ageYears  = Math.max(0, (+today().slice(0,4)) - lastYear);
+  const uplift    = Math.pow(1 + infl, ageYears);
+  const ground = exFlights * uplift * nights * people;
+  const air    = flightPP  * uplift * people;
+
+  document.getElementById("estOut").innerHTML =
+    `<div class="big">${money(ground + air)}</div>
+     <div class="det">${money(exFlights*uplift)}/person/day on the ground × ${nights} nights × ${people}
+       = ${money(ground)}${air ? `, plus ${money(air)} of flights` : ""}.<br>
+       Based on ${ts.length} trip${ts.length>1?"s":""} to ${esc(dest)}, last in ${lastYear},
+       aged forward ${ageYears} year${ageYears===1?"":"s"} at ${(infl*100).toFixed(0)}%.</div>`;
+}
+
+/* =============================================================
+   SECTION 8 — YEAR VIEW
+============================================================= */
+function renderYear(S){
+  const y  = state.year;
+  const ts = S.filter(t => t.year === y);
+  // A trip that hasn't happened yet only has its prepaid items, so folding it
+  // into a per-day rate drags the average down for no real reason. Totals count
+  // it (the money has left the account); rate metrics don't.
+  const taken  = ts.filter(t => !t.future);
+  const future = ts.filter(t => t.future);
+  const total  = ts.reduce((a,t)=>a+t.actual,0);
+  const takenTotal = taken.reduce((a,t)=>a+t.actual,0);
+  const pd     = taken.reduce((a,t)=>a+t.personDays,0);
+  const nights = taken.reduce((a,t)=>a+t.nights,0);
+  const budget = ts.reduce((a,t)=>a+(t.budget||0),0);
+  const prev   = S.filter(t => t.year === y-1).reduce((a,t)=>a+t.actual,0);
+
+  document.getElementById("yrKpis").innerHTML = [
+    ["Total spend", money(total), prev ? pct((total-prev)/prev*100)+" vs "+(y-1) : "no prior year",
+      prev ? (total>prev ? "up":"down") : ""],
+    ["Trips", ts.length, `${nights} nights away` + (future.length?` · ${future.length} still to come`:""), ""],
+    ["Cost per person / day", pd ? money(takenTotal/pd) : "—",
+      future.length ? "trips taken only" : "across the year", ""],
+    ["Budget variance", budget ? pct((total-budget)/budget*100) : "—",
+      `${money(total)} spent vs ${money(budget)} planned`, total>budget?"up":"down"],
+  ].map(([l,v,d,cls]) =>
+    `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>
+     <div class="kdelta ${cls}">${d}</div></div>`).join("");
+
+  document.getElementById("yrBvaTitle").innerHTML =
+    `Budget vs actual <span class="sub">· ${y} · click a trip to open its ledger</span>`;
+  document.getElementById("yrTrips").innerHTML =
+    `<table class="reflow"><thead><tr><th>Trip</th><th>Dates</th><th>Nights</th><th>Budget</th><th>Actual</th>
+      <th class="barcell" style="width:120px">Burn</th><th>/pp/day</th></tr></thead><tbody>` +
+    ts.map(t => {
+      // Actual only, everywhere on this row. Planning belongs to the trip page;
+      // this table answers "what have I spent in this year". A planned but
+      // unpaid trip therefore reads £0 here — that is the deliberate trade,
+      // and the stale strip above the nav is what explains it.
+      const over = t.budget && t.actual > t.budget;
+      const w = Math.min(100, t.budget ? t.actual/t.budget*100 : 0);
+      return `<tr class="click" data-t="${t.id}">
+        <td>${esc(t.name)} <span class="pill${t.future?" future":""}">${t.future?"booked":esc(t.purpose)}</span></td>
+        <td data-l="Dates">${t.start.slice(5)} → ${t.end.slice(5)}</td>
+        <td data-l="Nights">${t.nights}</td>
+        <td data-l="Budget" class="muted">${t.budget?money(t.budget):"—"}</td>
+        <td data-l="Spent" style="color:${over?c("--warn"):c("--good")}">${money(t.actual)}</td>
+        <td data-l="Burn" class="barcell"><div class="bar"><i class="${over?"over":""}" style="width:${w}%"></i></div></td>
+        <td data-l="Per person / day">${t.cpppd?money(t.cpppd):"—"}</td></tr>`;
+    }).join("") + `</tbody></table>`;
+  document.querySelectorAll("#yrTrips tr.click").forEach(tr =>
+    tr.onclick = () => { state.tripId = tr.dataset.t; state.view = "trip"; render(); });
+
+  const totals = CATS.map(cat => ts.reduce((a,t)=>a+(t.byCat[cat.id]||0),0));
+  mk("chYrCats", { type:"doughnut",
+    data:{ labels:CATS.map(x=>x.label), datasets:[{ data:totals,
+      backgroundColor:CATS.map(x=>catColor(x.id)), borderWidth:2, borderColor:c("--surface") }]},
+    options:{ responsive:true, maintainAspectRatio:false, cutout:"58%",
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        label:(x)=>`${x.label}: ${money(x.raw)} (${total?(x.raw/total*100).toFixed(0):0}%)` }}} }});
+  legendInto("legYrCats", CATS.map((cat,i) => ({ label:cat.label, color:catColor(cat.id),
+    extra:`<span class="mono muted">${money(totals[i])}</span>` })).filter((_,i)=>totals[i]>0));
+
+  // prepaid vs on-the-ground, bucketed by the month the money actually left
+  const months = Array.from({length:12}, (_,i) => `${y}-${String(i+1).padStart(2,"0")}`);
+  // t.real, not t.items: this chart is about money that has actually left the
+  // account in a given month, and a guess has not left anything.
+  // t.conv, not it.amountBase: per-line loops sit outside tripStats and so miss
+  // both guards it applies — the estimate filter (t.real) and the display
+  // conversion. Both have to be re-applied by hand here.
+  const bucket = (want) => months.map(m => ts.reduce((a,t) =>
+    a + t.real.filter(it => it.date.slice(0,7)===m && !!it.prepaid===want)
+              .reduce((s,it)=>s+t.conv(it),0), 0));
+  mk("chYrMonths", { type:"bar", data:{ labels:months.map(m=>m.slice(5)), datasets:[
+      { label:"Prepaid / booked", data:bucket(true),  backgroundColor:c("--flights"), borderWidth:0 },
+      { label:"On the ground",    data:bucket(false), backgroundColor:c("--food"),    borderWidth:0 }]},
+    options: baseOpts({ plugins:{ legend:{ display:true, position:"bottom",
+        labels:{ color:c("--muted"), boxWidth:10, font:{size:11} } },
+      tooltip:{ callbacks:{ label:(x)=>`${x.dataset.label}: ${money(x.raw)}` } } },
+      scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
+               y:Object.assign(gridOpts(),{stacked:true,
+                 ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v}}) } })});
+}
+
+/* =============================================================
+   SECTION 9 — TRIP VIEW (the editable ledger)
+============================================================= */
+function renderTrip(S){
+  const sel = document.getElementById("tripPick");
+  sel.innerHTML = S.slice().reverse().map(t =>
+    `<option value="${t.id}" ${t.id===state.tripId?"selected":""}>${esc(t.name)} · ${t.start.slice(0,7)}${
+       t.stale ? " · " + t.estCount + " estimated" : ""}</option>`).join("");
+  sel.onchange = () => { state.tripId = sel.value; render(); };
+
+  const t = S.find(x => x.id === state.tripId) || S[S.length-1];
+
+  // One wrapping facts line instead of three rigid columns. Segments are joined
+  // by a hairline divider rather than a "·" so a wrap never leaves a dangling
+  // separator at the start of the next line.
+  document.getElementById("tripMeta").innerHTML = [
+    `<span><b>${fmtRange(t.start, t.end)}</b></span>`,
+    `<span><b>${t.nights}</b> nights</span>`,
+    `<span><b>${t.travellers}</b> travellers</span>`,
+    t.country ? `<span>${esc(t.country)}</span>` : "",
+    `<span>${esc(t.purpose)}</span>`,
+    t.rating ? `<span><b>${t.rating}</b>★</span>` : `<span class="pill">not rated</span>`,
+    t.future ? `<span class="pill future">booked</span>` : "",
+    t.estCount ? `<span class="pill est">${t.estCount} estimated</span>` : "",
+  ].filter(Boolean).join(`<span class="sep"></span>`);
+
+  const over = t.budget && t.projected > t.budget;
+  // The trip page is the planning surface, so it reports PROJECTED — but never
+  // without saying so. When a trip holds guesses the headline names the split
+  // outright, so you always know how much of the number is real.
+  document.getElementById("tripKpis").innerHTML = [
+    [ t.planned ? "Projected" : "Total", money(t.projected),
+      t.planned ? `${money(t.actual)} paid + ${money(t.planned)} estimated` : `${t.items.length} line items`, ""],
+    ["Vs budget", t.variance===null ? "—" : pct(t.variance),
+      t.budget ? `${money(t.budget)} budget` : "no budget set", over?"up":"down"],
+    ["Per night", t.nights?money(t.perNight):"—", t.planned ? "projected, whole party" : "whole party", ""],
+    ["Per person / day", t.cpppdProj?money(t.cpppdProj):"—",
+      t.cpppdProj ? (t.planned ? "projected" : `${money(t.cpppdEx)} excluding flights`) : "", ""],
+  ].map(([l,v,d,cls]) =>
+    `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>
+     <div class="kdelta ${cls}">${d}</div></div>`).join("");
+
+  // ---- ledger ----
+  // If the row being edited has since vanished (deleted, or we switched trips),
+  // drop out of edit mode rather than rendering an orphaned form.
+  if (EDIT && !t.items.find(i => i.id === EDIT)) EDIT = null;
+
+  const led = document.getElementById("tripLedger");
+  led.innerHTML = t.items.length ? t.items.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(it =>
+    it.id === EDIT ? editRowHTML(it) :
+    `<div class="lrow"${it.currency !== DISP()
+        ? ` title="${inCur(it.amount, it.currency)} at ${it.fx} ${BASE()} per ${it.currency}"` : ""}>
+       <span class="d">${it.date.slice(5)}</span>
+       <span class="cat" data-d="${it.date.slice(5)}"><i class="dot" style="background:${catColor(it.category)}"></i><span>${CAT[it.category]?CAT[it.category].label:it.category}</span></span>
+       <span class="n">${esc(it.note)}</span>
+       <span class="orig">${it.currency !== DISP() ? inCur(it.amount, it.currency) : ""}</span>
+       <span class="flags">${it.prepaid?'<span class="pill">prepaid</span>':""}${
+         it.estimated?'<span class="pill est">estimate</span>':""}</span>
+       <span class="amt${it.estimated?" est":""}">${money2(t.conv(it))}</span>
+       <button class="pencil" data-e="${it.id}" title="Edit">✎</button>
+       <button class="trash" data-i="${it.id}" title="Delete">✕</button>
+     </div>`).join("") : `<div class="empty">No line items yet — add the flights first.</div>`;
+
+  led.querySelectorAll(".pencil").forEach(b => b.onclick = () => { EDIT = b.dataset.e; render(); });
+  led.querySelectorAll(".trash").forEach(b => b.onclick = async () => {
+    if (!confirm("Delete this line item?")) return;
+    try { await api("DELETE", `/api/trips/${t.id}/items/${b.dataset.i}`); await reload(); render(); }
+    catch(e){ alert("Could not delete: " + e.message); }
+  });
+  if (EDIT) wireEditRow(t, t.items.find(i => i.id === EDIT));
+
+  // ---- add-item row ----
+  const catSel = document.getElementById("niCat");
+  if (!catSel.options.length)
+    catSel.innerHTML = CATS.map(x => `<option value="${x.id}">${x.label}</option>`).join("");
+  const curSel = document.getElementById("niCur");
+  curSel.innerHTML = CURS().map(x => `<option value="${x.code}">${x.code}</option>`).join("");
+  curSel.value = t.defaultCurrency || BASE();
+  const dateIn = document.getElementById("niDate");
+  if (!dateIn.value || dateIn.dataset.trip !== t.id) { dateIn.value = t.start; dateIn.dataset.trip = t.id; }
+  syncFx();
+  curSel.onchange = syncFx;
+  // Re-tick the prepaid box from the category's default whenever the category
+  // changes. Without this the box goes stale: pick Car rental (prepaid), then
+  // Restaurants, and you'd silently file a dinner as booked-ahead money.
+  const syncPrepaid = () => {
+    document.getElementById("niPre").checked = !!(CAT[catSel.value] && CAT[catSel.value].pre);
+  };
+  // The estimate box is deliberately NOT reset by the category: when you sit
+  // down to plan a trip you tick it once and add ten lines in a row.
+  catSel.onchange = syncPrepaid;
+  syncPrepaid();
+
+  document.getElementById("niAdd").onclick = async () => {
+    const amt = Number(document.getElementById("niAmt").value);
+    if (!Number.isFinite(amt) || amt <= 0) return alert("Amount must be a number greater than zero.");
+    const cat = catSel.value;
+    try {
+      await api("POST", `/api/trips/${t.id}/items`, {
+        date: dateIn.value || t.start,
+        category: cat,
+        amount: amt,
+        currency: curSel.value,
+        fx: Number(document.getElementById("niFx").value),
+        note: document.getElementById("niNote").value || (CAT[cat] ? CAT[cat].label : cat),
+        prepaid: document.getElementById("niPre").checked,   // explicit — the box wins over the server's inference
+        estimated: document.getElementById("niEst").checked,
+      });
+      document.getElementById("niAmt").value = "";
+      document.getElementById("niNote").value = "";
+      await reload(); render();
+    } catch(e){ alert("Could not add: " + e.message); }
+  };
+
+  // ---- category doughnut ----
+  // Projected per category, so a trip you haven't taken still shows a shape.
+  // The legend names the estimated portion per category — the donut itself
+  // can't encode "of which a guess", so the number carries it instead.
+  const catTotal = (id) => (t.byCat[id]||0) + (t.byCatEst[id]||0);
+  const used = CATS.filter(x => catTotal(x.id));
+  mk("chTripCats", { type:"doughnut",
+    data:{ labels:used.map(x=>x.label), datasets:[{ data:used.map(x=>catTotal(x.id)),
+      backgroundColor:used.map(x=>catColor(x.id)), borderWidth:2, borderColor:c("--surface") }]},
+    options:{ responsive:true, maintainAspectRatio:false, cutout:"58%",
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        label:(x)=>`${x.label}: ${money(x.raw)} (${t.projected?(x.raw/t.projected*100).toFixed(0):0}%)`,
+        afterLabel:(x)=>{ const e=t.byCatEst[used[x.dataIndex].id];
+          return e ? `includes ${money(e)} estimated` : ""; } }}} }});
+  legendInto("legTripCats", used.map(x => ({ label:x.label, color:catColor(x.id),
+    extra:`<span class="mono muted">${money(catTotal(x.id))}</span>` +
+          (t.byCatEst[x.id] ? ` <span class="pill est">${money(t.byCatEst[x.id])} est</span>` : "") })));
+
+  // ---- currency mix ----
+  const curs = Object.entries(t.byCur).sort((a,b)=>b[1].base-a[1].base);
+  document.getElementById("tripCurrencies").innerHTML = curs.length
+    ? curs.map(([code,v]) => `<div class="mini">
+        <div class="ml">${code} · ${t.actual?(v.base/t.actual*100).toFixed(0):0}%</div>
+        <div class="mv">${inCur(v.orig, code)}</div>
+        ${code!==BASE() ? `<div class="ml" style="margin-top:2px">= ${money(v.base)}</div>` : ""}
+      </div>`).join("")
+    : `<div class="empty">Nothing logged yet.</div>`;
+
+  // ---- daily burn ----
+  const days = Array.from({length:t.nights+1}, (_,i) => addDays(t.start, i));
+  // Same rule as the year chart. "Burn" is a record of what you actually spent
+  // that day; a planned figure has no day on which it was spent.
+  const burn = days.map(d => t.real.filter(it => !it.prepaid && it.date===d).reduce((a,it)=>a+t.conv(it),0));
+  const avg  = burn.reduce((a,b)=>a+b,0) / days.length;
+  mk("chTripBurn", { type:"bar", data:{ labels:days.map(d=>d.slice(8)), datasets:[
+      { data:burn, backgroundColor:c("--food"), borderWidth:0 }]},
+    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+        title:(x)=>days[x[0].dataIndex], label:(x)=>money2(x.raw)+" that day" }}},
+      scales:{ x:Object.assign(gridOpts(),{grid:{display:false}}),
+               y:Object.assign(gridOpts(),{ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v}}) } })});
+  document.getElementById("capBurn").textContent = t.onground
+    ? `${money(t.onground)} on the ground over ${days.length} days — ${money(avg)} a day on average, against ${money(t.prepaid)} paid before leaving.`
+    : "Nothing spent on the ground yet.";
+}
+
+/* ---- inline line-item editing ----
+   EDIT holds the id of the single row currently in edit mode (null = none).
+   Because only one row can be open at a time, the edit controls can use fixed
+   element ids — the same trick rental_tracker uses, and the reason this needs
+   no per-row id mangling. */
+let EDIT = null;
+
+function editRowHTML(it){
+  const cats = CATS.map(x => `<option value="${x.id}" ${x.id===it.category?"selected":""}>${x.label}</option>`).join("");
+  const curs = CURS().map(x => `<option value="${x.code}" ${x.code===it.currency?"selected":""}>${x.code}</option>`).join("");
+  const isBase = it.currency === BASE();
+  return `<div class="editrow">
+    <input id="edDate" type="date" class="mono w-date" value="${it.date}" />
+    <select id="edCat" class="mono w-cat">${cats}</select>
+    <input id="edNote" class="grow" value="${esc(it.note)}" placeholder="note" />
+    <div class="amtwrap w-amt"><span class="cur" id="edSym">${esc(curOf(it.currency).symbol)}</span>
+      <input id="edAmt" class="mono" type="number" step="0.01" value="${it.amount}" /></div>
+    <select id="edCur" class="mono w-cur">${curs}</select>
+    <input id="edFx" class="mono w-fx" type="number" step="0.0001" value="${it.fx}" ${isBase?"disabled":""}
+           title="Rate: ${BASE()} per 1 unit" />
+    <label class="chk" title="Paid ahead of the trip rather than while away"><input id="edPre" type="checkbox" ${it.prepaid?"checked":""} /> prepaid</label>
+    <label class="chk" title="Untick once you know the real price"><input id="edEst" type="checkbox" ${it.estimated?"checked":""} /> estimate</label>
+    <button class="btn sm primary" id="edSave">Save</button>
+    <button class="btn sm" id="edCancel">Cancel</button>
+  </div>`;
+}
+
+function wireEditRow(trip, orig){
+  const g = (id) => document.getElementById(id);
+
+  // Currency switching inside an edit is the one case where the frozen rate
+  // must NOT be kept: a EUR rate is meaningless once the line becomes RON. So
+  // keep the stored rate while the currency is unchanged, and re-prefill from
+  // the current default the moment it changes.
+  const syncEditFx = () => {
+    const code = g("edCur").value;
+    const isBase = code === BASE();
+    g("edSym").textContent = curOf(code).symbol;
+    g("edFx").disabled = isBase;
+    g("edFx").value = isBase ? 1 : (code === orig.currency ? orig.fx : curOf(code).rate);
+  };
+  g("edCur").onchange = syncEditFx;
+
+  const cancel = () => { EDIT = null; render(); };
+  const save = async () => {
+    const amt = Number(g("edAmt").value);
+    if (!Number.isFinite(amt) || amt <= 0) return alert("Amount must be a number greater than zero.");
+    try {
+      await api("PUT", `/api/trips/${trip.id}/items/${orig.id}`, {
+        date: g("edDate").value,
+        category: g("edCat").value,
+        note: g("edNote").value,
+        amount: amt,
+        currency: g("edCur").value,
+        fx: Number(g("edFx").value),
+        prepaid: g("edPre").checked,   // explicit, so editing never silently re-infers it from the category
+        estimated: g("edEst").checked, // untick + correct the amount once you know the real price
+      });
+      EDIT = null; await reload(); render();
+    } catch(e){ alert("Could not save: " + e.message); }
+  };
+  g("edSave").onclick = save;
+  g("edCancel").onclick = cancel;
+
+  // Enter saves, Escape cancels — a two-key edit beats reaching for the mouse
+  // when you're correcting a row you just typed.
+  ["edDate","edNote","edAmt","edFx"].forEach(id => g(id).onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
+    if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  });
+  g("edNote").focus();
+}
+
+// Pre-fill the FX box with the current default for the chosen currency, and
+// lock it when the currency IS the base — a base rate other than 1 would make
+// the ledger disagree with itself.
+function syncFx(){
+  const code = document.getElementById("niCur").value;
+  const fxIn = document.getElementById("niFx");
+  const isBase = code === BASE();
+  fxIn.value = isBase ? 1 : curOf(code).rate;
+  fxIn.disabled = isBase;
+  document.getElementById("niSym").textContent = curOf(code).symbol;
+  document.getElementById("fxHint").textContent = isBase
+    ? `Amounts entered in ${code}, the base currency.`
+    : `Rate is ${BASE()} per 1 ${code}, pre-filled from settings and editable per line. Whatever you save is frozen onto this item.`;
+}
+
+/* =============================================================
+   SECTION 10 — trip create / edit modal
+============================================================= */
+let editingTrip = null;                     // null = creating
+
+function openTripModal(trip){
+  editingTrip = trip || null;
+  document.getElementById("tripModalTitle").textContent = trip ? "Edit trip" : "New trip";
+  document.getElementById("tripErr").classList.remove("show");
+  const g = (id) => document.getElementById(id);
+  g("tfCurrency").innerHTML = CURS().map(x => `<option value="${x.code}">${x.code}</option>`).join("");
+  g("tfName").value       = trip ? trip.name : "";
+  g("tfCountry").value    = trip ? trip.country : "";
+  g("tfPurpose").value    = trip ? trip.purpose : "leisure";
+  g("tfStart").value      = trip ? trip.start : "";
+  g("tfEnd").value        = trip ? trip.end : "";
+  g("tfTravellers").value = trip ? trip.travellers : DEF_TRAVELLERS();
+  g("tfBudget").value     = trip ? trip.budget : "";
+  g("tfCurrency").value   = trip ? (trip.defaultCurrency || BASE()) : BASE();
+  g("tfRating").value     = trip && trip.rating ? trip.rating : "";
+  g("tfNote").value       = trip ? (trip.note || "") : "";
+  document.getElementById("tripModal").classList.add("open");
+}
+
+document.getElementById("tripSave").onclick = async () => {
+  const g = (id) => document.getElementById(id).value;
+  const body = {
+    name:g("tfName"), country:g("tfCountry"), purpose:g("tfPurpose"),
+    start:g("tfStart"), end:g("tfEnd"), travellers:g("tfTravellers"),
+    budget:g("tfBudget") === "" ? 0 : g("tfBudget"),
+    defaultCurrency:g("tfCurrency"), rating:g("tfRating"), note:g("tfNote"),
+  };
+  try {
+    const saved = editingTrip
+      ? await api("PUT", `/api/trips/${editingTrip.id}`, body)
+      : await api("POST", "/api/trips", body);
+    document.getElementById("tripModal").classList.remove("open");
+    await reload();
+    state.tripId = saved.id; state.view = "trip"; state.year = +saved.start.slice(0,4);
+    render();
+  } catch(e) {
+    const box = document.getElementById("tripErr");
+    box.textContent = e.message; box.classList.add("show");   // server-side message, verbatim
+  }
+};
+
+// The sheet is a remote control: each row clicks the real header button, so
+// adding an action means adding it in one place, not two.
+document.querySelectorAll("#menuSheet .sheetrow").forEach(b => b.onclick = () => {
+  document.getElementById("menuSheet").classList.remove("open");
+  document.getElementById(b.dataset.do).click();
+});
+
+// --- Settings dropdown -------------------------------------------------------
+const setMenu = document.getElementById("setMenu"), setMenuBtn = document.getElementById("setMenuBtn");
+setMenuBtn.onclick = (e) => {
+  e.stopPropagation();
+  const open = setMenu.classList.toggle("open");
+  setMenuBtn.setAttribute("aria-expanded", open);
+};
+// Any click inside the menu is a chosen action, so close on the way through.
+setMenu.onclick = () => setMenu.classList.remove("open");
+document.addEventListener("click", (e) => {
+  if (!setMenu.contains(e.target) && e.target !== setMenuBtn) setMenu.classList.remove("open");
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu.classList.remove("open"); });
+
+// --- Rates refresh -----------------------------------------------------------
+// The label IS the feedback: it reports success or failure in place, so there is
+// no toast to miss and no way for a failed refresh to look like a successful one.
+const ratesBtn = document.getElementById("ratesBtn"), ratesLbl = document.getElementById("ratesLbl");
+function ratesState(cls, text, revert){
+  ratesBtn.className = "btn" + (cls ? " " + cls : "");
+  ratesLbl.textContent = text;
+  if (revert) setTimeout(() => { ratesBtn.className = "btn"; ratesLbl.textContent = "Rates update"; }, 6000);
+}
+ratesBtn.onclick = async () => {
+  ratesBtn.disabled = true;
+  ratesState("", "Updating…");
+  try {
+    const r = await api("POST", "/api/rates/refresh");
+    await reload(); render();
+    ratesState("ok", r.updated.length ? `Rates updated · ${r.date}` : "Rates already current", true);
+  } catch(e) {
+    ratesState("bad", "Rates update failed", true);
+    alert("Could not update rates: " + e.message +
+          "\n\nExisting entries are unaffected — only the default rates would have changed.");
+  } finally {
+    ratesBtn.disabled = false;
+  }
+};
+
+document.getElementById("newTripBtn").onclick   = () => openTripModal(null);
+document.getElementById("firstTripBtn").onclick = () => openTripModal(null);
+document.getElementById("editTripBtn").onclick  = () =>
+  openTripModal(DATA.trips.find(t => t.id === state.tripId));
+document.getElementById("delTripBtn").onclick   = async () => {
+  const t = DATA.trips.find(x => x.id === state.tripId);
+  if (!t) return;
+  // Deleting a trip takes its whole ledger with it, so name the cost out loud.
+  if (!confirm(`Delete "${t.name}" and all ${t.items.length} of its line items?\n\nA snapshot is taken first, so this can be undone from Restore.`)) return;
+  try { await api("DELETE", `/api/trips/${t.id}`); state.tripId = null; await reload(); render(); }
+  catch(e){ alert("Could not delete: " + e.message); }
+};
+
+/* =============================================================
+   SECTION 11 — currency settings modal
+============================================================= */
+function drawCurRows(list){
+  document.getElementById("curRows").innerHTML = list.map((x,i) => `
+    <div class="currow" data-i="${i}">
+      <input class="mono cc" value="${esc(x.code)}" placeholder="EUR" maxlength="8" />
+      <input class="cs" value="${esc(x.symbol)}" placeholder="€" maxlength="4" />
+      <input class="mono cr" type="number" step="0.0001" value="${x.rate}" placeholder="0.85" />
+      <button class="trash cdel" title="Remove">✕</button>
+    </div>`).join("");
+  document.querySelectorAll("#curRows .cdel").forEach(b => b.onclick = () => {
+    const cur = readCurRows(); cur.splice(+b.parentElement.dataset.i, 1);
+    drawCurRows(cur); refreshBaseSelect(cur);
+  });
+}
+function readCurRows(){
+  return [...document.querySelectorAll("#curRows .currow")].map(r => ({
+    code: r.querySelector(".cc").value.trim().toUpperCase(),
+    symbol: r.querySelector(".cs").value,
+    rate: Number(r.querySelector(".cr").value),
+  }));
+}
+function refreshBaseSelect(list){
+  const sel = document.getElementById("setBase");
+  const keep = sel.value || BASE();
+  sel.innerHTML = list.map(x => `<option value="${esc(x.code)}">${esc(x.code)}</option>`).join("");
+  sel.value = list.find(x => x.code === keep) ? keep : (list[0] && list[0].code);
+}
+document.getElementById("setBtn").onclick = () => {
+  document.getElementById("setErr").classList.remove("show");
+  drawCurRows(CURS()); refreshBaseSelect(CURS());
+  // Base is the currency every amountBase on disk is denominated in. Changing it
+  // once trips exist would relabel every historical figure without converting a
+  // single one — £100 silently becoming €100. It is therefore locked as soon as
+  // there is anything to mislabel; the header dropdown covers the real need,
+  // which is *viewing* in another currency.
+  const baseSel = document.getElementById("setBase");
+  const locked = DATA.trips.length > 0;
+  baseSel.disabled = locked;
+  document.getElementById("baseNote").textContent = locked
+    ? `Locked: ${DATA.trips.length} trip${DATA.trips.length>1?"s are":" is"} stored in ${BASE()}. `
+      + `Use the currency dropdown in the header to view in another currency.`
+    : "Can be changed while the ledger is empty.";
+  document.getElementById("setTrav").value = DEF_TRAVELLERS();
+  document.getElementById("setModal").classList.add("open");
+};
+document.getElementById("addCurBtn").onclick = () => {
+  const cur = readCurRows(); cur.push({ code:"", symbol:"", rate:1 });
+  drawCurRows(cur); refreshBaseSelect(cur);
+};
+document.getElementById("setSave").onclick = async () => {
+  try {
+    await api("POST", "/api/settings", {
+      baseCurrency: document.getElementById("setBase").value,
+      currencies: readCurRows(),
+      defaultTravellers: document.getElementById("setTrav").value,
+    });
+    document.getElementById("setModal").classList.remove("open");
+    // Let the estimator re-seed its party size from the new default.
+    estWired = false;
+    await reload(); render();
+  } catch(e) {
+    const box = document.getElementById("setErr");
+    box.textContent = e.message; box.classList.add("show");
+  }
+};
+
+/* =============================================================
+   SECTION 12 — save / load / restore
+   Mirrors rental_tracker's export-import-snapshot trio.
+============================================================= */
+document.getElementById("loadBtn").onclick = () => document.getElementById("fileInput").click();
+document.getElementById("fileInput").onchange = (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = async () => {
+    try {
+      const parsed = JSON.parse(fr.result);
+      if (!confirm("Replace ALL current data with this file?\n\nA snapshot of the current data is taken first, so this is undoable.")) return;
+      await api("POST", "/api/import", parsed);
+      await reload(); state.tripId = null; render();
+    } catch(e){ alert("Could not load: " + e.message); }
+    finally { ev.target.value = ""; }        // let the same file be picked again
+  };
+  fr.readAsText(f);
+};
+
+document.getElementById("restoreBtn").onclick = async () => {
+  const list = document.getElementById("snapList");
+  list.innerHTML = `<div class="empty">Loading…</div>`;
+  document.getElementById("snapModal").classList.add("open");
+  try {
+    const snaps = await api("GET","/api/backups");
+    list.innerHTML = snaps.length ? snaps.map(s => `
+      <div class="snaprow">
+        <span class="when">${s.mtime.replace("T"," ").slice(0,19)}</span>
+        <span class="sz">${(s.size/1024).toFixed(1)} KB</span>
+        <button class="btn" data-s="${esc(s.name)}">Restore</button>
+      </div>`).join("") : `<div class="empty">No snapshots yet.</div>`;
+    list.querySelectorAll("button[data-s]").forEach(b => b.onclick = async () => {
+      if (!confirm("Restore this snapshot? The current data is snapshotted first, so this is undoable.")) return;
+      try {
+        await api("POST","/api/restore",{ name:b.dataset.s });
+        document.getElementById("snapModal").classList.remove("open");
+        await reload(); state.tripId = null; render();
+      } catch(e){ alert("Restore failed: " + e.message); }
+    });
+  } catch(e){ list.innerHTML = `<div class="empty">Could not list snapshots: ${esc(e.message)}</div>`; }
+};
+
+// Generic modal close: the Cancel/Close buttons and a click on the backdrop.
+document.querySelectorAll("[data-close]").forEach(b =>
+  b.onclick = () => document.getElementById(b.dataset.close).classList.remove("open"));
+document.querySelectorAll(".modal-bg").forEach(bg =>
+  bg.onclick = (e) => { if (e.target === bg) bg.classList.remove("open"); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") document.querySelectorAll(".modal-bg.open").forEach(m => m.classList.remove("open"));
+});
+
+/* =============================================================
+   SECTION 13 — boot
+============================================================= */
+(async function boot(){
+  try { await reload(); render(); }
+  catch(e){
+    document.getElementById("firstRun").style.display = "";
+    document.getElementById("firstRun").innerHTML =
+      `<h2>Could not reach the server</h2><p>${esc(e.message)}</p>`;
+  }
+})();
+</script>
+</body>
+</html>

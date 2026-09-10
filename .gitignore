@@ -1,0 +1,19 @@
+# Runtime data — created by running `node server.js` from app.web/.
+# This is a personal spend ledger: never commit it.
+data/
+plans/
+*.tmp
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Docusaurus (website/)
+.docusaurus/
+build/
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
