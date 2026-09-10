@@ -3,10 +3,10 @@
 //  Holiday Tracker — self check
 //
 //  Run after editing server.js or public/index.html:
-//      cd roles/holiday_tracker/files && node selfcheck.js
+//      cd app.web && node selfcheck.js
 //
-//  Not deployed: install.yml copies an explicit file list and this is not on
-//  it. Nothing here touches the network or your data — it reads the two source
+//  Not deployed: .dockerignore keeps it out of the image. Nothing here
+//  touches the network or your data — it reads the two source
 //  files and exercises the pure functions lifted out of the page.
 //
 //  It guards the invariants that are easy to break silently, i.e. the ones

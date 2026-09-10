@@ -4,7 +4,7 @@
 # There is deliberately no scheduled rebuild: republishing an existing version
 # tag with different contents would break the guarantee that a pinned version
 # is immutable, which is the whole point of pinning it in Ansible.
-FROM node:22-alpine
+FROM node:24-alpine
 
 # App directory inside the container
 WORKDIR /app

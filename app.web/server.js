@@ -4,9 +4,9 @@
 //  No external runtime deps: uses only Node's built-in http/fs.
 //  Data lives in ./data/data.json (mount this dir as a volume).
 //
-//  Same shape as the rental_tracker backend on purpose — atomic
-//  writes, a rolling snapshot before every change, strict number
-//  parsing, and no auth of its own (Authelia sits in front).
+//  Atomic writes, a rolling snapshot before every change, strict
+//  number parsing, and no auth of its own — it is designed to run
+//  bound to loopback behind a reverse proxy that provides auth.
 // =============================================================
 
 const http = require("http"); // built-in HTTP server (no Express needed)
@@ -65,7 +65,7 @@ const CATEGORIES = [
   "accommodation",
   "restaurants",
   "activities",
-  "ski", // pass, instructor and hire together — see the note in the role README
+  "ski", // pass, instructor and hire together — see website/docs/categories.md
   "transport",
   "carrental",
   "shopping",

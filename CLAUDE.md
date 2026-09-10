@@ -16,9 +16,11 @@ features, and a wrong number is worse than an error, because the user would act 
 | `app.web/public/index.html` | the entire frontend (~1800 lines, vanilla JS, no bundler) |
 | `app.web/selfcheck.js` | invariant checks — **not** deployed, run before every commit |
 | `app.web/Dockerfile` | the image; build context is `app.web/` |
+| `app.web/test/` | smoke tests — boot the real server, drive it over HTTP |
 | `website/docs/` | user documentation (Docusaurus later; plain markdown for now) |
 | `assets/` | screenshots |
-| `plans/` | migration and design plans — read before structural work |
+| `plans/` | migration and design plans — read before structural work (git-ignored, local only) |
+| `eslint.config.mjs`, `package.json` | dev tooling at the root; `app.web/package.json` stays the clean app manifest that ships in the image |
 
 Deployment lives in a **separate private Ansible repo**, not here. This repo publishes a versioned
 image; the infra repo pins a version and runs it.
@@ -33,12 +35,29 @@ image; the infra repo pins a version and runs it.
 ## Commands
 
 ```bash
-cd app.web
-node server.js        # run locally → http://localhost:8100 (Ctrl+C to stop)
-node selfcheck.js     # invariant checks — no network, does not touch data
+npm install           # dev tooling only — devDependencies never reach the image
+npm run hooks         # point git at .githooks/ (once per clone)
+
+npm run verify        # syntax + lint + selfcheck + tests — about 1.5s, and what the hook runs
+npm run syntax        # node --check
+npm run lint          # ESLint, including inline <script> inside index.html
+npm run selfcheck     # invariant checks — no network, does not touch data
+npm test              # boots the real server on a temp data dir, drives it over HTTP
+
+cd app.web && node server.js    # run locally → http://localhost:8100
 ```
 
-There is no build step, no test framework, no linter. `selfcheck.js` is the test suite.
+There is no build step and no test framework beyond Node's built-in runner.
+**Run `npm run verify` before every commit** — the pre-commit hook does this, but only
+after `npm run hooks` has been run in that clone.
+
+Two layers of checking, and they cover different things:
+
+- `selfcheck.js` reads the *source* and asserts invariants. It never starts the app.
+- `app.web/test/` starts the app and drives the API. It knows nothing about the source.
+
+A change that breaks the ledger's integrity should fail the first. A change that
+stops the app booting should fail the second. Both must pass.
 
 ## Invariants — do not break these
 

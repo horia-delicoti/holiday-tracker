@@ -1,13 +1,13 @@
 name: App
 
 # Two behaviours from one workflow:
-#   push to main / PR  → run the self check, and build the image WITHOUT pushing,
-#                        so a broken Dockerfile is caught before it matters
-#   push of a v* tag   → run the self check, then build and publish to GHCR
+#   push to main / PR  → verify, then build the image WITHOUT pushing and smoke
+#                        test that it actually boots
+#   push of a v* tag   → the same, then publish the multi-arch image to GHCR
 #
-# Deploying is a deliberate version bump: only a tag publishes an image.
-# There is intentionally no `latest` tag and no push on main — the Ansible role
-# pins an exact version, and a moving tag would defeat that.
+# Deploying is a deliberate version bump: only a tag publishes an image. There
+# is intentionally no `latest` tag and no push from main — the Ansible role pins
+# an exact version, and a moving tag would defeat that.
 
 on:
   push:
@@ -18,32 +18,49 @@ on:
 
 # Note: no `paths:` filter. It would apply to tag pushes too, so tagging a commit
 # that only touched website/ would silently skip publishing the release.
-# The self check runs in about a second — there is nothing to save here.
 
 concurrency:
   group: app-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: '24'
+
 jobs:
-  test:
-    name: Self check
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # devDependencies only — the app itself ships zero runtime dependencies.
+      - name: Install dev tooling
+        run: npm ci
+
+      - name: Syntax
+        run: npm run syntax
+
+      - name: Lint
+        run: npm run lint
 
       # Guards the invariants that fail SILENTLY — producing a wrong number
       # rather than an error. See app.web/selfcheck.js and CLAUDE.md.
-      - name: Run self check
-        working-directory: app.web
-        run: node selfcheck.js
+      - name: Self check
+        run: npm run selfcheck
+
+      # Boots the real server against a throwaway data dir and drives it over
+      # HTTP. Catches what the self check cannot: that the app actually starts.
+      - name: Tests
+        run: npm test
 
   build:
     name: Build image
-    needs: test
+    needs: verify
     runs-on: ubuntu-latest
 
     permissions:
@@ -51,14 +68,47 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      # arm64 for the Pi, amd64 so the image also runs anywhere else.
-      # The image only COPYs JavaScript — nothing is compiled — so emulation
-      # costs almost nothing here and avoids depending on arm64 runner availability.
+      # arm64 for the Pi, amd64 so the image also runs anywhere else. The image
+      # only COPYs JavaScript — nothing is compiled — so emulation costs almost
+      # nothing here and avoids depending on arm64 runner availability.
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      # ---- Build a single-arch image first, so it can be loaded and RUN ----
+      # buildx cannot --load a multi-platform build, and an image that builds
+      # but does not boot is exactly the failure worth catching here.
+      - name: Build amd64 image for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app.web
+          platforms: linux/amd64
+          load: true
+          tags: holiday-tracker:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          set -euo pipefail
+          docker run -d --name ht-ci -p 8100:8100 holiday-tracker:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8100/api/data >/dev/null 2>&1; then
+              echo "container answered after ${i}s"
+              curl -fsS http://127.0.0.1:8100/ | grep -qi '<html' \
+                && echo "app shell served"
+              docker rm -f ht-ci >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::container never answered on /api/data"
+          docker logs ht-ci || true
+          docker rm -f ht-ci >/dev/null || true
+          exit 1
+
+      # ---- Publish, tags only ----
       - name: Log in to GHCR
         if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/login-action@v3
@@ -70,22 +120,22 @@ jobs:
       # v1.2.3 publishes 1.2.3, 1.2 and 1 — pin the exact one in Ansible.
       - name: Docker meta
         id: meta
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
-      - name: Build and push
+      - name: Build and push multi-arch
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/build-push-action@v6
         with:
           context: ./app.web
           platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
