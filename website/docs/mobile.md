@@ -111,6 +111,8 @@ the app draws.
 | **16px inputs on touch** | The real fix. iOS force-zooms the page whenever you focus a field whose text is under 16px, and never zooms back out — that, not pinching, is what made the app feel like a web page. Fixed at source so it holds even where `user-scalable=no` is ignored. |
 | **The right keyboard** | `inputmode="decimal"` on money fields and `numeric` on counts. `type="number"` alone gets you the punctuation keyboard; inputmode is what asks for the big keypad you want when logging a bill. |
 | **Thumb-sized row controls** | Edit and delete on a ledger row were 21×24px against Apple's 44 minimum — two small targets side by side, one of them destructive, on the screen used most while away. They are 36×44 on touch: the glyphs are unchanged, only the box around them grew, and the note column keeps enough width to stay readable. |
+| **Dialogs hold still** | iOS moves the *visual* viewport to reveal a focused field and leaves the layout viewport where it was, so a dialog fixed to `inset:0` slides off to one side — labels clipped, form apparently drifting as you type. The dialog is pinned to `--vvtop` / `--vvleft` / `--vvw` / `--vvh`, all published from `visualViewport`, and the page behind is locked with `body.locked` so there is nothing for iOS to scroll. |
+| **Form columns can shrink** | `.fgrid > div{min-width:0}`. A native date input has an intrinsic width, and a grid item defaults to `min-width:auto` — together they pushed the New trip dialog wider than the screen instead of fitting the column, which is what forced the sideways shift. |
 | **Dialogs clear the keyboard** | iOS does not shrink the layout viewport when the keyboard opens, so a centred dialog keeps its height and hides its own Save button. `--vvh` is published from `visualViewport` and the dialog is anchored to the top on phones, so it grows downwards and clamps to whatever is still visible — on a small phone it becomes scrollable rather than unreachable. |
 | **Resumed sessions re-read** | An installed app has no address bar, no reload and no pull-to-refresh, so a session resumed from the app switcher would show whatever it loaded days ago — and, with the worker caching the store, possibly a copy of it. `visibilitychange` and `online` both trigger a re-read. |
 | **`touch-action: manipulation`** | Removes double-tap-to-zoom and the 300ms tap delay that comes with it, without touching scrolling. |
@@ -123,7 +125,9 @@ The Settings tab is an **action, not a destination**. It deliberately carries no
 never be selected as a view or shown as the active tab.
 
 The action sheet is a **remote control, not a copy**: each row calls `.click()` on the real header
-button, so every action still has exactly one implementation. Adding a header action means adding
+button, so every action still has exactly one implementation. A row marked `data-keepopen` does not
+close the sheet — **Update rates online** is the one, because its result is reported back into the
+row's own label and the header button that normally carries that feedback is not on screen at all. Adding a header action means adding
 one row — never a second handler. The self check asserts that every header button appears in the
 sheet, so forgetting a row fails the check rather than silently going missing on the phone.
 

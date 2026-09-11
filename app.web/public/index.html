@@ -275,6 +275,8 @@
        font-family:inherit;font-size:16px;color:var(--ink);text-align:left;
        padding:14px 12px;border-radius:16px;cursor:pointer}
   .sheetrow:active{background:var(--soft)}
+  .sheetrow.ok{color:var(--good)} .sheetrow.ok .ico{color:var(--good)}
+  .sheetrow.bad{color:var(--warn)} .sheetrow.bad .ico{color:var(--warn)}
   .sheetrow .ico{width:24px;text-align:center;color:var(--muted);font-size:16px;flex:none}
   .sheetsep{height:1px;background:var(--hair);margin:6px 10px}
   .sheetsel{display:flex;align-items:center;gap:12px;padding:10px 12px;font-size:16px;color:var(--ink)}
@@ -729,6 +731,9 @@
   /* ---------- modals ---------- */
   .modal-bg{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
   .modal-bg.open{display:flex}
+  /* With a dialog open there is nothing behind it worth scrolling, and leaving
+     it scrollable is what let iOS drag the page around under the form. */
+  body.locked{overflow:hidden}
   #tripModalTitle{display:flex;align-items:center;gap:9px}
   #tripModalTitle .h3ico{width:19px;height:19px;flex:none;stroke-width:1.9;color:var(--accent)}
   /* --vvh is the VISUAL viewport height, set from JS. iOS does not shrink the
@@ -740,8 +745,19 @@
      there is no centre left to sit in, and a dialog that grows downwards keeps
      its first field where the thumb expects it. */
   @media(max-width:700px){
-    .modal-bg{align-items:flex-start;padding:12px}
+    /* Pinned to the VISUAL viewport, not the layout one. iOS shifts the visual
+       viewport to reveal a focused field and leaves the layout viewport where
+       it was, so a dialog fixed to inset:0 slides off to one side — which is
+       what made the form appear to drift and clipped "NAME" to "ME". */
+    .modal-bg{align-items:flex-start;padding:12px;
+         top:var(--vvtop,0);left:var(--vvleft,0);right:auto;bottom:auto;
+         width:var(--vvw,100%);height:var(--vvh,100%)}
     .modal{max-height:calc(var(--vvh, 100vh) - 24px)}
+    /* A two-column grid whose items may not shrink: a native date input has an
+       intrinsic width, and without this it pushes the dialog wider than the
+       screen instead of fitting the column. */
+    .fgrid > div{min-width:0}
+    .fgrid input,.fgrid select{min-width:0}
   }
   .modal h3{font-family:var(--serif);font-size:19px;margin:0 0 4px}
   .modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
@@ -1078,7 +1094,11 @@
   <div class="sheet" role="menu" aria-label="Actions">
     <button class="sheetrow" data-do="newTripBtn"><span class="ico">+</span>New trip</button>
     <button class="sheetrow" data-do="setBtn"><span class="ico">⚙</span>Currencies &amp; rates</button>
-    <button class="sheetrow" data-do="ratesBtn"><span class="ico">↻</span>Update rates online</button>
+    <!-- Keeps the sheet open: the result is reported in this row's own label,
+         and on a phone the header button that normally carries that feedback is
+         not on screen at all. -->
+    <button class="sheetrow" data-do="ratesBtn" data-keepopen><span class="ico">↻</span
+      ><span id="ratesLblM">Update rates online</span></button>
     <div class="sheetsep"></div>
     <!-- Not a .sheetrow: it is a control, not an action, so it does not close
          the sheet on touch and is not part of the click-through wiring. -->
@@ -2703,7 +2723,10 @@ document.getElementById("tripSave").onclick = async () => {
 // The sheet is a remote control: each row clicks the real header button, so
 // adding an action means adding it in one place, not two.
 document.querySelectorAll("#menuSheet .sheetrow").forEach(b => b.onclick = () => {
-  document.getElementById("menuSheet").classList.remove("open");
+  // Most rows are actions and the sheet's job is done once they fire. A row
+  // marked data-keepopen reports back into itself, so closing would throw the
+  // answer away before it could be read.
+  if (!b.hasAttribute("data-keepopen")) document.getElementById("menuSheet").classList.remove("open");
   document.getElementById(b.dataset.do).click();
 });
 
@@ -2725,10 +2748,20 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu.cl
 // The label IS the feedback: it reports success or failure in place, so there is
 // no toast to miss and no way for a failed refresh to look like a successful one.
 const ratesBtn = document.getElementById("ratesBtn"), ratesLbl = document.getElementById("ratesLbl");
+// The phone never sees the header button, so the sheet row carries the same
+// report: same call, both labels, no third state to keep in step.
+const ratesRow = document.querySelector("#menuSheet [data-do=\"ratesBtn\"]");
+const ratesLblM = document.getElementById("ratesLblM");
+const IDLE_M = "Update rates online";
 function ratesState(cls, text, revert){
   ratesBtn.className = "btn" + (cls ? " " + cls : "");
   ratesLbl.textContent = text;
-  if (revert) setTimeout(() => { ratesBtn.className = "btn"; ratesLbl.textContent = "Rates"; }, 6000);
+  ratesLblM.textContent = text === "Rates" ? IDLE_M : text;
+  ratesRow.className = "sheetrow" + (cls ? " " + cls : "");
+  if (revert) setTimeout(() => {
+    ratesBtn.className = "btn"; ratesLbl.textContent = "Rates";
+    ratesRow.className = "sheetrow"; ratesLblM.textContent = IDLE_M;
+  }, 6000);
 }
 ratesBtn.onclick = async () => {
   ratesBtn.disabled = true;
@@ -3007,14 +3040,39 @@ document.querySelectorAll('[data-seg="theme"]').forEach(box => {
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { applyTheme(); render(); });
 applyTheme();
 
-// The keyboard changes the VISUAL viewport only, so this is the one height a
-// dialog can trust. Published as --vvh for the CSS above.
+// The keyboard changes the VISUAL viewport only — its size AND its offset, as
+// iOS slides it about to keep the focused field in view. Publishing all four
+// numbers is what lets a dialog sit still on screen while that happens.
 if (window.visualViewport) {
-  const vv = window.visualViewport;
-  const fit = () => document.documentElement.style.setProperty("--vvh", vv.height + "px");
+  const vv = window.visualViewport, root = document.documentElement.style;
+  const fit = () => {
+    root.setProperty("--vvh", vv.height + "px");
+    root.setProperty("--vvw", vv.width + "px");
+    root.setProperty("--vvtop", vv.offsetTop + "px");
+    root.setProperty("--vvleft", vv.offsetLeft + "px");
+  };
   vv.addEventListener("resize", fit);
+  vv.addEventListener("scroll", fit);
   fit();
 }
+
+// One place decides whether the page behind a dialog may scroll, rather than a
+// lock/unlock pair at every open and close site — there are eight of them, and
+// the one that gets forgotten is the bug.
+{
+  const bgs = [...document.querySelectorAll(".modal-bg")];
+  const lock = () => document.body.classList.toggle("locked",
+    bgs.some(b => b.classList.contains("open")));
+  bgs.forEach(b => new MutationObserver(lock).observe(b, { attributes:true, attributeFilter:["class"] }));
+}
+
+// Keep the field being typed into inside the dialog's own scroll box. "nearest"
+// on purpose: it moves only when the field is actually hidden, so tapping from
+// one visible field to the next does not shift anything.
+document.querySelectorAll(".modal").forEach(m => m.addEventListener("focusin", (e) => {
+  if (e.target.matches("input,select,textarea"))
+    setTimeout(() => e.target.scrollIntoView({ block:"nearest" }), 60);
+}));
 
 // Registered after first paint, never before: a worker that installs during
 // boot competes with the very request it exists to make faster.

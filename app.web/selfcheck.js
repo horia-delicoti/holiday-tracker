@@ -223,6 +223,27 @@ ok("png is serveable", /"\.png": "image\/png"/.test(srvSrc), "without this the i
 ok("index.html is not cached", /Cache-Control.*no-cache/.test(srvSrc), "so a redeploy cannot leave a stale UI");
 ok("inputs are 16px on touch", /@media\(max-width:700px\)\{input,select,textarea\{font-size:16px/.test(flat),
    "under 16px iOS force-zooms on focus and never zooms back");
+
+// --- dialogs on a phone ---------------------------------------------------
+// iOS moves the VISUAL viewport to reveal a focused field and leaves the
+// layout viewport behind, so a dialog fixed to inset:0 slides off-screen and
+// clips its own labels. These three together are what hold it still; each is
+// invisible in a desktop browser and obvious on a phone.
+ok("dialogs follow the visual viewport",
+   /\.modal-bg\{[^}]*top:var\(--vvtop/.test(flat) && /--vvtop", vv\.offsetTop/.test(js),
+   "offset as well as height, or the dialog drifts sideways");
+ok("the page cannot scroll behind a dialog",
+   /body\.locked\{overflow:hidden\}/.test(flat) && /classList\.toggle\("locked"/.test(js),
+   "otherwise iOS drags the page around under the form");
+ok("form columns can shrink", /\.fgrid > div\{min-width:0\}/.test(flat),
+   "a native date input has an intrinsic width and would widen the dialog");
+
+// The header label that normally reports a rates refresh is not on screen on a
+// phone, so the sheet row carries it — and must not close the sheet first.
+ok("the rates row reports in place",
+   /data-do="ratesBtn" data-keepopen/.test(html) && /ratesLblM"\)/.test(js) &&
+   /hasAttribute\("data-keepopen"\)/.test(js),
+   "sheet stays open and the row shows the result");
 ok("safe areas handled", /env\(safe-area-inset-bottom\)/.test(html) && /viewport-fit=cover/.test(html),
    "viewport-fit is what makes env() resolve at all");
 ok("tables reflow rather than truncate", (html.match(/class="reflow"/g) || []).length === 2 && /grid-template-areas/.test(html));
