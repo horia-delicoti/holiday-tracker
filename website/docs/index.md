@@ -22,12 +22,14 @@ whole design; see [Estimates](./estimates) for why.
 
 ## Getting started
 
-1. **Create a trip** — destination, dates, travellers, an optional budget and a purpose (ski, beach,
-   city break) so trips of the same kind can be compared later
+1. **Create a trip** — destination, dates, travellers, an optional budget and a purpose — beach,
+   city break, snowboarding, hiking, family, work or other — so trips of the same kind can be
+   compared later.
+   The purpose also colours the trip's card on the Trips page.
 2. **Add line items as you go** — amount, [category](./categories), currency, and whether it was
    prepaid or paid on the ground
 3. **Flag anything you're guessing** as an [estimate](./estimates), and correct it as you book
-4. **Read the analytics** — category share, cost per person per day, daily burn, budget variance
+4. **Read the analytics** — category share, cost per person per day, budget variance
 
 ## Next
 

@@ -65,9 +65,8 @@ const CATEGORIES = [
   "accommodation",
   "restaurants",
   "activities",
-  "ski", // pass, instructor and hire together — see website/docs/categories.md
+  "ski", // shown as "Snowboard": pass, instructor and hire — see website/docs/categories.md
   "transport",
-  "carrental",
   "shopping",
   "insurance",
   "medical",
@@ -77,15 +76,13 @@ const CATEGORIES = [
 // Categories that are, by their nature, paid up front rather than on the trip.
 // Used to default the `prepaid` flag; the client may still override it.
 //
-// carrental is here because hire is normally booked and paid online weeks ahead
-// — it behaves like a flight, not like a metro ticket. ski is NOT, because
-// passes, lessons and hire are usually paid at the resort; if yours came
-// bundled with the chalet, untick the box on that line.
+// ski is NOT here, because passes, lessons and hire are usually paid at the
+// resort; if yours came bundled with the chalet, untick the box on that line.
 //
 // Keep in sync with the `pre:` flags in CATS in public/index.html — the UI uses
 // its copy to pre-tick the checkbox, this one is the fallback when the client
 // sends no explicit flag.
-const PREPAID_BY_DEFAULT = new Set(["flights", "accommodation", "insurance", "carrental"]);
+const PREPAID_BY_DEFAULT = new Set(["flights", "accommodation", "insurance"]);
 
 // --- Ensure data dir + file exist on boot ---
 function ensureStore() {
@@ -284,7 +281,9 @@ function buildTrip(data, b, existing) {
       start,
       end,
       travellers: Math.round(travellers),
-      purpose: str(b.purpose, 40, existing ? existing.purpose : "leisure"),
+      // Defaults to the catch-all. It used to default to "leisure", which made
+      // leisure mean "didn't pick" and quietly rotted the tags.
+      purpose: str(b.purpose, 40, existing ? existing.purpose : "other"),
       rating,
       budget: money(budget),
       defaultCurrency, // pre-selects the currency on this trip's entry form
@@ -346,6 +345,9 @@ function serveStatic(req, res) {
     // disagree about what fields exist. Revalidate it every time; the vendored
     // Chart.js is genuinely static and stays cacheable.
     if (ext === ".html") headers["Cache-Control"] = "no-cache";
+    // Same reasoning for the service worker: it decides what the phone caches,
+    // so a stale copy of it would pin an old app on the device indefinitely.
+    if (rel === "/sw.js") headers["Cache-Control"] = "no-cache";
     res.writeHead(200, headers);
     res.end(data); // send file
   });

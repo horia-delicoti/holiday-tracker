@@ -70,17 +70,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Every docker/* action below is on the major that runs on Node 24
+      # (setup-qemu v4, setup-buildx v4, login v4, metadata v6, build-push v7).
+      # The "Node 20 is being deprecated" notice comes from the runtime GitHub
+      # uses to execute an action, not from node-version — so the fix is always
+      # a newer action version, never a workflow setting. Needs Actions Runner
+      # v2.327.1+, which GitHub-hosted runners always are.
+      #
       # arm64 for the Pi, amd64 so the image also runs anywhere else. The image
       # only COPYs JavaScript — nothing is compiled — so emulation costs almost
       # nothing here and avoids depending on arm64 runner availability.
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
       # ---- Build a single-arch image first, so it can be loaded and RUN ----
       # buildx cannot --load a multi-platform build, and an image that builds
       # but does not boot is exactly the failure worth catching here.
       - name: Build amd64 image for testing
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./app.web
           platforms: linux/amd64
@@ -111,7 +118,7 @@ jobs:
       # ---- Publish, tags only ----
       - name: Log in to GHCR
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -121,7 +128,7 @@ jobs:
       - name: Docker meta
         id: meta
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -131,7 +138,7 @@ jobs:
 
       - name: Build and push multi-arch
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./app.web
           platforms: linux/amd64,linux/arm64

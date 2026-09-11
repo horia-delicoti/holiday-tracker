@@ -27,4 +27,12 @@ RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 
 EXPOSE 8100
+
+# Reports SERVING, not merely running. `docker ps` shows (healthy) only once the
+# HTTP layer actually answers — a container that booted but cannot read its data
+# directory would otherwise look fine. Uses node itself: the image has no curl
+# or wget, and adding one to get a healthcheck would be a poor trade.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8100)+'/api/data').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["node", "server.js"]

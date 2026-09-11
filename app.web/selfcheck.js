@@ -59,20 +59,70 @@ const uiCats = [...html.matchAll(/\{ id:"([a-z]+)",\s*label:"([^"]+)",\s*css:"(-
 ok("same categories, same order", JSON.stringify(srvCats) === JSON.stringify(uiCats.map((x) => x.id)),
    srvCats.length + " categories");
 ok("prepaid defaults agree", uiCats.every((u) => srvPre.has(u.id) === u.pre));
+// Checked independently of the uiCats regex above rather than folded into it:
+// requiring `icon` there would mean one missing icon silently empties uiCats and
+// turns every category check into a vacuous pass over an empty array.
+const catsBlock = html.match(/const CATS = \[([\s\S]*?)\n\];/)[1];
+const catIcons = [...catsBlock.matchAll(/icon:"([^"]+)"/g)].map((m) => m[1]);
+ok("every category has an icon", catIcons.length === uiCats.length,
+   catIcons.length + " icons for " + uiCats.length + " categories");
+ok("category icons are distinct", new Set(catIcons).size === catIcons.length,
+   "a shared emoji would defeat the point of having one");
+
+// Trip purposes used to live in two places — a hand-typed <select> and the
+// PURPOSE map — and the check here compared them. Now the select is GENERATED
+// from PURPOSE, so the invariant is stronger and simpler: the markup carries no
+// options at all, and the form builds them from the map. Re-adding a typed
+// <option> is how a second list comes back.
+const purposeKeys = [...(js.match(/const PURPOSE = \{([\s\S]*?)\n\};/)[1]
+  .matchAll(/"([^"]+)":/g))].map((m) => m[1]);
+ok("purpose dropdown is generated, not typed",
+   /<select id="tfPurpose"><\/select>/.test(html) &&
+   /g\("tfPurpose"\)\.innerHTML = Object\.entries\(PURPOSE\)/.test(js),
+   purposeKeys.length + " purposes, one source");
+ok("every purpose has a colour token", purposeKeys.length > 0 &&
+   [...js.match(/const PURPOSE = \{([\s\S]*?)\n\};/)[1].matchAll(/v:"(--tp-[a-z]+)"/g)]
+     .every((m) => new RegExp(m[1] + ":#[0-9A-Fa-f]{6}").test(html)),
+   "every v: points at a declared --tp-* variable");
+const purposeBlock = js.match(/const PURPOSE = \{([\s\S]*?)\n\};/)[1];
+const purposeIcons = [...purposeBlock.matchAll(/icon:"([^"]+)"/g)].map((m) => m[1]);
+ok("every trip purpose has an icon", purposeIcons.length === purposeKeys.length,
+   purposeIcons.length + " icons for " + purposeKeys.length + " purposes");
+ok("purpose icons are distinct", new Set(purposeIcons).size === purposeIcons.length);
 const declared = new Set([...html.matchAll(/(--[a-z]+):#/g)].map((m) => m[1]));
 ok("every category has a declared colour", uiCats.every((u) => declared.has(u.css)));
 
-// adjacent colours must stay distinguishable in a stacked bar
-const hex = (v) => html.match(new RegExp(v + ":(#[0-9A-Fa-f]{6})"))[1];
+// Adjacent colours must stay distinguishable in a stacked bar — in BOTH
+// themes. The dark palette lifts every hue, and lifting them all by eye is
+// exactly how two neighbours quietly end up the same colour at night.
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const dist = (a, b) => Math.round(Math.sqrt(rgb(a).reduce((s, v, i) => s + (v - rgb(b)[i]) ** 2, 0)));
-let minD = Infinity, worst = "";
-uiCats.forEach((u, i) => {
-  if (i === uiCats.length - 1) return;
-  const d = dist(hex(u.css), hex(uiCats[i + 1].css));
-  if (d < minD) { minD = d; worst = u.label + " / " + uiCats[i + 1].label; }
+// The light values live in the bare :root, the dark ones behind
+// [data-theme="dark"]. Split the source so one cannot read the other.
+const purposeTokens = [...purposeBlock.matchAll(/v:"(--tp-[a-z]+)"/g)].map((m) => m[1]);
+const DARK_SEL = ':root[data-theme="dark"]{';
+const darkBlock = (/:root\[data-theme="dark"\]\{[\s\S]*?\n {2}\}/.exec(html) || [""])[0];
+const lightBlock = html.slice(0, html.indexOf(DARK_SEL));
+ok("a dark palette is defined", darkBlock.length > 0);
+
+[["light", lightBlock], ["dark", darkBlock]].forEach(([theme, block]) => {
+  const hex = (v) => (new RegExp(v + ":\\s*(#[0-9A-Fa-f]{6})").exec(block) || [])[1];
+  const missing = uiCats.filter((u) => !hex(u.css)).map((u) => u.label);
+  ok(`every category has a ${theme} colour`, missing.length === 0, missing.join(", ") || uiCats.length + " hues");
+  if (missing.length) return;
+  let minD = Infinity, worst = "";
+  uiCats.forEach((u, i) => {
+    if (i === uiCats.length - 1) return;
+    const d = dist(hex(u.css), hex(uiCats[i + 1].css));
+    if (d < minD) { minD = d; worst = u.label + " / " + uiCats[i + 1].label; }
+  });
+  ok(`adjacent ${theme} colours are distinguishable`, minD >= 55, "closest pair " + worst + " at " + minD);
+  // Every purpose needs its own token in each theme too, or a strip renders
+  // with an empty custom property and the card loses its colour entirely.
+  const noPurpose = purposeTokens.filter((t) => !hex(t));
+  ok(`every purpose has a ${theme} colour`, noPurpose.length === 0,
+     noPurpose.join(", ") || purposeTokens.length + " purposes");
 });
-ok("adjacent category colours are distinguishable", minD >= 55, "closest pair " + worst + " at " + minD);
 
 // -------------------------------------------------------- money integrity
 head("Money can only be read through tripStats");
@@ -97,8 +147,12 @@ const used = [...new Set([...html.matchAll(/getElementById\("([^"]+)"\)/g)].map(
 ok("every getElementById target exists", used.every((x) => ids.has(x)), used.length + " references");
 
 const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+// setMenuBtn opens the sheet rather than doing anything; themeBtn is the one
+// header control the sheet does NOT delegate to, because a phone shows all
+// three appearance modes at once instead of cycling through them — the check
+// below proves that control exists rather than letting it go missing.
 const headerActions = [...header.matchAll(/<(?:a|button)[^>]*\bid="(\w+)"/g)].map((m) => m[1])
-  .filter((x) => !["setMenuBtn", "ratesLbl", "baseLabel"].includes(x));
+  .filter((x) => !["setMenuBtn", "ratesLbl", "baseLabel", "themeBtn"].includes(x));
 const sheetRows = [...html.matchAll(/data-do="(\w+)"/g)].map((m) => m[1]);
 const unreachable = headerActions.filter((b) => !sheetRows.includes(b));
 ok("every header action is reachable on a phone", unreachable.length === 0,
@@ -113,8 +167,58 @@ ok("every view has a bottom-bar icon", views.every(([id]) => ICONS[id]));
 // ------------------------------------------------------------ phone shell
 head("Phone shell");
 ok("installable", /rel="manifest"/.test(html) && /apple-touch-icon/.test(html));
-["manifest.json", "icon-180.png", "icon-512.png", "icon-512-maskable.png"].forEach((f) =>
+["manifest.json", "icon-180.png", "icon-192.png", "icon-512.png", "icon-512-maskable.png",
+ "sw.js"].forEach((f) =>
   ok("ships " + f, fs.existsSync(path.join(DIR, "public", f))));
+
+// --- offline shell -------------------------------------------------------
+// The worker names the files it pre-caches. addAll() is atomic: one missing
+// path and the install rejects, leaving the app with no offline mode at all
+// and nothing on screen to say so. Cheap to check here, invisible until a
+// phone is on a plane otherwise.
+const sw = fs.readFileSync(path.join(DIR, "public", "sw.js"), "utf8");
+const precached = [...sw.matchAll(/"(\/[^"]*)"/g)].map((m) => m[1])
+  .filter((u) => u !== "/" && !u.startsWith("/api/"));
+ok("every pre-cached asset exists",
+   precached.every((u) => fs.existsSync(path.join(DIR, "public", u))),
+   precached.length + " assets listed in sw.js");
+ok("the worker is registered", /serviceWorker\.register\("\/sw\.js"\)/.test(html));
+ok("the worker is not cached", /rel === "\/sw\.js".*no-cache/s.test(srvSrc),
+   "a stale worker pins an old app on the device");
+ok("writes are never served from cache", /req\.method !== "GET"/.test(sw),
+   "a queued write would report money as saved that was not");
+
+// --- launch colours ------------------------------------------------------
+// iOS paints background_color before the app draws and tints the status bar
+// area with theme_color. Anything but the app's own paper flashes on launch.
+const paper = (/--paper:\s*(#[0-9A-Fa-f]{6})/.exec(html) || [])[1];
+const manifest = JSON.parse(fs.readFileSync(path.join(DIR, "public", "manifest.json"), "utf8"));
+const themeMeta = (/name="theme-color" content="(#[0-9A-Fa-f]{6})"/.exec(html) || [])[1];
+ok("launch colours are the app's paper",
+   !!paper && [themeMeta, manifest.theme_color, manifest.background_color]
+     .every((c) => (c || "").toLowerCase() === paper.toLowerCase()),
+   "theme-color, theme_color and background_color all " + paper);
+ok("the status bar is readable", /apple-mobile-web-app-status-bar-style" content="default"/.test(html),
+   "black-translucent draws white glyphs over a near-white app");
+
+// --- appearance -----------------------------------------------------------
+// The theme is resolved in the head, before anything paints. Lose this and the
+// app still works — it just flashes the wrong theme on every launch, which is
+// invisible in a light browser and glaring on a dark phone.
+ok("the theme is resolved before first paint",
+   /localStorage\.getItem\("hl-theme"\)[\s\S]*?dataset\.theme/.test(html.slice(0, html.indexOf("<style>"))),
+   "no flash of the wrong theme on launch");
+// Two shells, two shapes, one source: the header cycles through THEME_MODES,
+// the phone sheet lays the same list out in full. Either going missing leaves
+// a theme that can be set on one device and not the other.
+ok("the theme control is in both shells",
+   /id="themeBtn"/.test(header) && /data-seg="theme" role="group"/.test(html)
+     && /onclick = cycleTheme/.test(js),
+   "header button cycles, phone sheet lists all three");
+ok("every theme mode is offered", /THEME_MODES = \[\["light"[\s\S]*?\["dark"[\s\S]*?\["auto"/.test(js),
+   "light, dark and follow-the-device");
+ok("the browser chrome follows the palette", /meta\.content = c\("--paper"\)/.test(js),
+   "theme-color is read back from the stylesheet, not repeated as a hex");
 ok("png is serveable", /"\.png": "image\/png"/.test(srvSrc), "without this the icons 404");
 ok("index.html is not cached", /Cache-Control.*no-cache/.test(srvSrc), "so a redeploy cannot leave a stale UI");
 ok("inputs are 16px on touch", /@media\(max-width:700px\)\{input,select,textarea\{font-size:16px/.test(flat),
@@ -122,7 +226,9 @@ ok("inputs are 16px on touch", /@media\(max-width:700px\)\{input,select,textarea
 ok("safe areas handled", /env\(safe-area-inset-bottom\)/.test(html) && /viewport-fit=cover/.test(html),
    "viewport-fit is what makes env() resolve at all");
 ok("tables reflow rather than truncate", (html.match(/class="reflow"/g) || []).length === 2 && /grid-template-areas/.test(html));
-const labelled = [...html.matchAll(/<td(?![^>]*data-l)[^>]*>/g)].length;
+// The overview heat grid (.heat, cells .lab/.hc) is not a reflow table: it
+// scrolls sideways by design, so its cells carry no data-l and are skipped.
+const labelled = [...html.matchAll(/<td(?![^>]*(?:data-l|class="(?:lab|hc)"))[^>]*>/g)].length;
 ok("every reflowed table cell carries a heading", labelled <= 2, "first columns aside, all cells have data-l");
 
 // ------------------------------------------------- display currency maths

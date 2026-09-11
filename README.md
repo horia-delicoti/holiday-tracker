@@ -22,10 +22,14 @@ holding the data.
   rate is frozen onto each line at entry time so a later rate move can never restate a past trip
 - **Estimates that never lie** — planned figures are tracked separately and excluded from every
   spend total, and a trip left with guesses after it ends is flagged until you correct it
-- **Per-year analytics** — category share, cost per person per day, prepaid vs on-the-ground,
-  daily burn, destinations, budget variance
+- **Per-year analytics** — category share, cost per person per day, a trip timeline, spend so far
+  against budget, destinations, budget variance
 - **Installable on a phone** — ships a web manifest, so Add to Home Screen gives it its own icon,
   full-screen launch and persistent session
+- **Opens offline** — a service worker caches the app and the last store it loaded, so the icon
+  opens into a readable ledger with no network; writes still need the server and say so
+- **Light, dark or auto** — a Dracula dark theme, picked in Settings and stored per device; the
+  palette restates only colour tokens and the charts re-render from the same ones
 - **Backups built in** — a rolling snapshot before every change, plus in-app export and restore
 
 ## Tech stack

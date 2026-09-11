@@ -8,10 +8,35 @@
      the manifest only changes how it is launched (own icon, no browser chrome,
      its own cookie jar so the Authelia session survives between launches). -->
 <link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#1B2733" />
+<!-- The launch colour, and on iOS the tint behind the status bar. It is the
+     app's own paper, not the icon's navy: with the two different, every launch
+     flashed a dark screen before the app appeared. One per scheme, or a dark
+     phone gets a pale band above a dark app. -->
+<meta name="theme-color" content="#F7F5F2" />
+<script>
+// Runs before anything paints, on purpose: resolving the theme after the app
+// boots shows one frame of the wrong one, and on a phone that flash is the
+// first thing you see every launch. Deliberately the only logic in the head —
+// it sets the attribute the CSS keys on, and the app takes over from there.
+(function(){
+  var dark = false;
+  try {
+    var m = localStorage.getItem("hl-theme") || "auto";
+    dark = m === "dark" || (m === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  } catch (e) { /* private mode: fall through to light */ }
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // First-frame guess only. applyTheme() re-reads this from --paper once the
+  // stylesheet is live, so these two values cannot drift from the palette.
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#282A36" : "#F7F5F2";
+})();
+</script>
 <link rel="apple-touch-icon" href="/icon-180.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<!-- default, not black-translucent: translucent draws the clock, battery and
+     signal in WHITE and lets the page run underneath, which on a near-white
+     paper background makes the whole status bar invisible. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Holidays" />
 <!-- Chart.js is vendored locally (public/chart.umd.min.js) so the page works
      on the rpi5 without reaching out to any external CDN. The app makes no
@@ -24,7 +49,7 @@
      the same variables via c(), so CSS and charts cannot drift.
   ============================================================ */
   :root{
-    --ink:#1E2A30; --paper:#F3F5F6; --surface:#FFFFFF; --line:#E2E7E9;
+    --ink:#26221E; --paper:#F7F5F2; --surface:#FFFFFF; --line:#E8E3DC;
     /* one hue per spend category — drives legends, donuts and stacked bars */
     --flights:#3E7CB1; --stay:#2F6F62; --food:#C9822E; --activities:#7A9E4F;
     --transport:#8A7AA8; --shopping:#B5654A; --insurance:#6B8E9E; --misc:#98A0A5;
@@ -32,13 +57,42 @@
        away from --shopping (#B5654A clay) and --transport (#8A7AA8 lavender),
        which are its nearest neighbours in a stacked bar. */
     --medical:#A6486B;
-    /* Glacier cyan and leather brown — the last two unused hue families.
-       Each sits next to a deliberately distant neighbour in the CATS order:
-       ski (cyan) between activities (green) and transport (lavender),
-       carrental (brown) between transport (lavender) and shopping (clay). */
-    --ski:#3E9EA8; --carrental:#7A5C3E;
-    --accent:#2F6F62; --warn:#B5654A; --good:#4C8A5A;
-    --muted:#6B7680; --soft:#F6F8F9; --hair:#EDF1F2;
+    /* Glacier cyan, the last unused hue family. It sits between activities
+       (green) and transport (lavender) in the CATS order — deliberately
+       distant neighbours, so the three never blur in a stacked bar. */
+    --ski:#3E9EA8;
+    --accent:#2F6F62; --warn:#B5654A; --good:#4C8A5A; --accent-deep:#255A4F;
+    /* Text that sits ON a filled surface. Its own token because in dark mode
+       --ink is nearly white, and "white on ink" would then be white on white. */
+    --on-ink:#FFFFFF; --on-accent:#FFFFFF;
+    /* Three notice palettes — information, caution, danger — each a ground, a
+       border and an ink. Everything that used to hard-code these hexes now
+       reads them, which is what lets the dark block below restate them once. */
+    --info-bg:#EAF2F7;   --info-line:#CBE0EC;  --info-ink:#255A7E;
+    --amber-bg:#FFF8E6;  --amber-line:#EBDCB2; --amber-ink:#6B5A28; --amber-deep:#8A6D1F;
+    --amber-pill:#FFF4DE; --amber-pill-line:#E8D6A8;
+    --danger-bg:#FDF0EC; --danger-line:#EBC9BE; --danger-ink:#8C4530;
+    --danger-bg-hi:#F9E3DB; --danger-line-hi:#D9A898; --danger-ink-hi:#7A3A27;
+    /* Depth. On paper a card lifts with a shadow; on a dark ground a shadow is
+       invisible, so these go to transparent there and the border does the work. */
+    --shadow:0 1px 2px rgba(38,34,30,.045);
+    --shadow-lift:0 6px 16px rgba(38,34,30,.10);
+    --shadow-pop:0 10px 30px rgba(30,42,48,.16);
+    --shadow-toggle:0 1px 2px rgba(38,34,30,.08);
+    --scrim:rgba(30,42,48,.45);
+    --accent-soft:rgba(47,111,98,.10); --accent-ring:rgba(47,111,98,.12);
+    --trash-idle:rgba(181,101,74,.55);
+    /* Trip purposes — the SECOND colour system in this app, and deliberately a
+       quieter one. The eleven category hues above are data: they carry values in
+       legends, donuts and stacked bars. These are identity: they only ever tint
+       a card's strip, never a chart. Kept lighter and less saturated so the two
+       never read as the same scale. Six values, closed set — unlike countries,
+       this list cannot grow, which is the whole reason it is safe to colour.
+       Seven values; minimum distance between any pair is 70, against the
+       categories' 61. Hiking is earth, beach is sand, snowboarding is glacier. */
+    --tp-beach:#D9A441; --tp-city:#6E86BF; --tp-snow:#4FB3A6;  --tp-hiking:#A5754A;
+    --tp-family:#74A86B; --tp-work:#6F7A85; --tp-other:#BDB4A9;
+    --muted:#6F6960; --soft:#FAF8F5; --hair:#F0ECE6;
     /* Translucent surfaces for the floating bar and sheet. Kept as variables so
        the frosted look has one definition, like every other colour here. */
     --glass:rgba(255,255,255,.72); --glassline:rgba(255,255,255,.62);
@@ -51,7 +105,71 @@
     --navgap:max(8px, calc(env(safe-area-inset-bottom) - 14px));
     --serif:ui-serif,Georgia,"Iowan Old Style","Palatino Linotype",serif;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    /* Tells the browser to render native controls — the date picker, selects,
+       scrollbars, form focus rings — in whichever scheme is active. Without it
+       a dark app still gets a blinding white date picker. The [data-theme]
+       blocks below pin it once the choice is known. */
+    color-scheme: light dark;
   }
+
+  /* ===========================================================
+     DARK — Dracula.
+
+     The ground, and the ten category hues, are Dracula's own: cyan, green,
+     orange, yellow, blue, purple, coral, pink. Chosen over a lifted version of
+     the paper palette because after dark this app is allowed to be its own
+     thing rather than a dimmed copy of the day one.
+
+     Keyed on [data-theme] rather than a media query, and JS resolves "auto"
+     into an explicit value before the first paint. One block instead of two
+     (a media query AND an attribute selector, each restating forty tokens),
+     and a manual choice can beat the system setting in both directions.
+
+     Two rules that are easy to get wrong and expensive to miss:
+       · anything sitting ON a colour flips. --ink is nearly white here, so
+         "white on ink" would be white on white; and Dracula green is bright
+         enough that a white label on it falls to 1.4:1 against 11.5:1 for a
+         dark one.
+       · adjacent category hues stay 75 apart (the floor is 55, the light set
+         manages 81) and every one clears 3:1 against a card. The self check
+         runs that test on both palettes, because lifting ten hues by eye is
+         how two neighbours quietly become one colour at night.
+
+     Charts need no dark branch at all: each reads these same variables through
+     c() when it is built, so a theme change only has to re-render.
+  ============================================================ */
+  :root[data-theme="dark"]{
+    --ink:#F8F8F2; --paper:#282A36; --surface:#323446; --line:#44475A;
+    --muted:#9AA0BF; --hair:#3A3C4E; --soft:#2D2F3C;
+    /* categories — Dracula's accent family, extended to ten */
+    --flights:#8BE9FD; --stay:#50FA7B; --food:#FFB86C; --activities:#F1FA8C;
+    --transport:#BD93F9; --shopping:#FF8C7A; --insurance:#8494CE; --misc:#A7ADC9;
+    --medical:#FF79C6; --ski:#6EA8FF;
+    --accent:#50FA7B; --warn:#FF7A7A; --good:#50FA7B; --accent-deep:#6BFB90;
+    /* Both flip: ink is light here, and Dracula green takes a dark label. */
+    --on-ink:#282A36; --on-accent:#21222C;
+    --info-bg:#223240;   --info-line:#2F4657;  --info-ink:#8BE9FD;
+    --amber-bg:#31301F;  --amber-line:#4A4832; --amber-ink:#F1FA8C; --amber-deep:#E4EC7C;
+    --amber-pill:#343320; --amber-pill-line:#4F4D35;
+    --danger-bg:#37232B; --danger-line:#54343F; --danger-ink:#FF9A9A;
+    --danger-bg-hi:#422A33; --danger-line-hi:#63404C; --danger-ink-hi:#FFB3B3;
+    /* A shadow cannot lift anything off a dark ground — the lighter surface and
+       the border already do that — so these only deepen the separation. */
+    --shadow:0 1px 2px rgba(0,0,0,.38);
+    --shadow-lift:0 8px 20px rgba(0,0,0,.46);
+    --shadow-pop:0 10px 30px rgba(0,0,0,.5);
+    --shadow-toggle:0 1px 2px rgba(0,0,0,.4);
+    --scrim:rgba(20,21,28,.66);
+    --accent-soft:rgba(80,250,123,.14); --accent-ring:rgba(80,250,123,.26);
+    --trash-idle:rgba(255,140,122,.62);
+    /* purposes, from the same family; closest pair 75 */
+    --tp-beach:#F1FA8C; --tp-city:#BD93F9; --tp-snow:#8BE9FD; --tp-hiking:#FFB86C;
+    --tp-family:#50FA7B; --tp-work:#7B8CD0; --tp-other:#BFC6BE;
+    --glass:rgba(50,52,70,.78); --glassline:rgba(255,255,255,.10);
+    --glassshadow:0 8px 28px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"]{ color-scheme: light; }
   *{box-sizing:border-box}
   /* App-like touch behaviour. `manipulation` removes double-tap-to-zoom (and the
      300ms tap delay that comes with it) while leaving scrolling alone;
@@ -63,11 +181,24 @@
        margin:0;background:var(--paper);color:var(--ink);
        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        font-size:15px;line-height:1.5}
+  /* The content column. .hwrap below MUST carry the same value — the header
+     band spans the window but its contents ride this column, and the brand
+     lining up with the first card is the whole reason the band works. */
   .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
   .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
   .muted{color:var(--muted)}
   /* ---------- header ---------- */
-  header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px;margin-bottom:20px}
+  /* The band spans the window; .hwrap holds its contents to the content column,
+     so the brand still lines up with the first card and "+ New trip" with the
+     last. Same ground as the page — the hairline alone separates chrome from
+     content, which is what Séjour does. NB the brand dart's fold is stroked in
+     this background colour; changing it here means changing it there too.
+     padding-top carries the notch inset, which used to sit on .wrap — the
+     header is the topmost element now, so the inset belongs to it. */
+  header{background:var(--paper);border-bottom:1px solid var(--line);
+         padding-top:env(safe-area-inset-top)}
+  .hwrap{max-width:1180px;margin:0 auto;padding:14px 20px;
+         display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px}
   .eyebrow{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;letter-spacing:.2em;text-transform:uppercase}
   h1{font-family:var(--serif);font-size:34px;margin:4px 0 0;font-weight:600}
   .brand{display:flex;align-items:center;gap:11px;font-size:27px;margin:0}
@@ -79,7 +210,7 @@
   .menuwrap{position:relative}
   .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:45;display:none;
        background:var(--surface);border:1px solid var(--line);border-radius:11px;
-       padding:6px;width:214px;box-shadow:0 10px 30px rgba(30,42,48,.16)}
+       padding:6px;width:214px;box-shadow:var(--shadow-pop)}
   .menu.open{display:block}
   .mrow{display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;
        font-family:inherit;font-size:13.5px;color:var(--ink);padding:9px 10px;border-radius:7px;
@@ -88,13 +219,28 @@
   .msep{height:1px;background:var(--hair);margin:5px 8px}
   /* Rates button feedback: the label carries the result, so there is no toast
      to miss and no silent failure. */
-  #ratesBtn.ok{border-color:var(--good);color:var(--good)}
-  #ratesBtn.bad{border-color:var(--warn);color:var(--warn)}
+  /* The least-used control on the row was wearing the same chrome as a primary
+     action. Stripped to muted text on the page ground; it grows a surface only
+     on hover, and the .ok/.bad states below still override it, so the transient
+     feedback after a refresh reads as loudly as before. */
+  /* Icon only. The word was the second-longest thing on the row and the cog
+     already says it; aria-label and title carry the name for screen readers
+     and on hover, so nothing is lost but the width. */
+  /* Just the cog. No surface and no border: it is a quiet control, and at this
+     size the icon carries the affordance on its own. Sized so the button still
+     matches the height of its bordered neighbours in the row. */
+  #setMenuBtn{padding:6px;background:none;border-color:transparent;color:var(--muted)}
+  #setMenuBtn:hover{color:var(--ink)}
+  #setMenuBtn svg{display:block;width:23px;height:23px;stroke-width:1.6}
+  #ratesBtn{background:none;border-color:transparent;color:var(--muted);padding:8px 9px}
+  #ratesBtn:hover{background:var(--surface);border-color:var(--line);color:var(--ink)}
+  #ratesBtn.ok{background:var(--surface);border-color:var(--good);color:var(--good)}
+  #ratesBtn.bad{background:var(--surface);border-color:var(--warn);color:var(--warn)}
   #ratesBtn:disabled{opacity:.6;cursor:default}
   /* Shown only while the display currency differs from the stored one. Without
      it a converted figure eventually gets screenshotted and believed. */
-  .convbar{display:none;background:#EAF2F7;border:1px solid #CBE0EC;border-radius:10px;
-       padding:9px 13px;font-size:12.5px;color:#255A7E;margin-bottom:14px;line-height:1.5}
+  .convbar{display:none;background:var(--info-bg);border:1px solid var(--info-line);border-radius:10px;
+       padding:9px 13px;font-size:12.5px;color:var(--info-ink);margin-bottom:14px;line-height:1.5}
   .convbar.show{display:block}
   /* Phones: the five header buttons wrapped onto two rows and ate roughly a
      quarter of the screen before a single figure appeared. The whole row goes,
@@ -132,20 +278,47 @@
   .sheetrow .ico{width:24px;text-align:center;color:var(--muted);font-size:16px;flex:none}
   .sheetsep{height:1px;background:var(--hair);margin:6px 10px}
   .sheetsel{display:flex;align-items:center;gap:12px;padding:10px 12px;font-size:16px;color:var(--ink)}
+  /* Segmented control — the same chrome as the breakdown toggle, widened for
+     words. Both copies carry data-seg, so one wiring pass finds them. */
+  /* Chromeless like the Rates button beside it: these two report state rather
+     than invite a press, so they stay quiet until hovered. */
+  #themeBtn{background:none;border-color:transparent;color:var(--muted);padding:8px 9px;
+       display:inline-flex;align-items:center;gap:6px}
+  #themeBtn:hover{background:var(--surface);border-color:var(--line);color:var(--ink)}
+  #themeBtn .tico{width:15px;height:15px;flex:none;stroke-width:1.9}
+  .seg{display:inline-flex;gap:2px;background:var(--hair);border-radius:8px;padding:2px;margin-left:auto}
+  .seg button{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:6px;border:0;
+       background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:12.5px;line-height:1}
+  .seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-toggle)}
+  .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .seg svg{width:14px;height:14px;stroke-width:1.9;fill:none;stroke:currentColor}
+  @media(max-width:700px){
+    .seg button{font-size:15px;padding:7px 11px}
+    .seg svg{width:16px;height:16px}
+    /* A label and three options do not fit one phone row — "Auto" fell off the
+       edge of the sheet. The control takes its own line and splits it evenly,
+       which is also a bigger target for each option. */
+    .segrow{flex-wrap:wrap}
+    .segrow .seg{flex:1 1 100%;margin:9px 0 2px}
+    .segrow .seg button{flex:1;justify-content:center}
+  }
   .sheetsel select{width:auto;margin-left:auto;font-size:16px}
   .sheetcancel{width:100%;justify-content:center;margin-top:8px;padding:13px;font-size:16px}
   .btn{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);
        color:var(--ink);padding:8px 14px;border-radius:8px;font-size:14px;cursor:pointer;text-decoration:none}
   .btn:hover{border-color:var(--accent)}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  .btn.primary:hover{background:#255a4f}
-  .btn.danger{color:var(--warn)}
-  .btn.danger:hover{border-color:var(--warn)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+  .btn.primary:hover{background:var(--accent-deep)}
+  /* Destructive: visibly red at rest, not only on hover. It is the one action
+     on the page that cannot be undone by clicking again, so it should not be
+     dressed like the ones that can. */
+  .btn.danger{color:var(--danger-ink);background:var(--danger-bg);border-color:var(--danger-line)}
+  .btn.danger:hover{background:var(--danger-bg-hi);border-color:var(--danger-line-hi);color:var(--danger-ink-hi)}
   /* ---------- view nav ---------- */
   #viewNav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
   .vtab{font-family:var(--serif);font-size:15px;font-weight:600;padding:8px 18px;border-radius:10px;
        border:1px solid var(--line);background:var(--surface);cursor:pointer;color:var(--ink)}
-  .vtab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .vtab.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
   .vtab:hover:not(.on){border-color:var(--accent);color:var(--accent)}
   .vtab svg{display:none}                       /* icons are for the bottom bar only */
   /* The fourth tab is an ACTION, not a destination — it opens the sheet. It has
@@ -170,42 +343,129 @@
          padding:6px 2px;border:0;border-radius:18px;background:none;color:var(--muted);
          transition:background .18s ease,color .18s ease}
     /* the selected tab gets its own soft capsule, the way iOS marks the active one */
-    .vtab.on{background:rgba(47,111,98,.10);color:var(--accent)}
+    .vtab.on{background:var(--accent-soft);color:var(--accent)}
     .vtab:hover:not(.on){color:var(--muted)}
     .vtab:active{transform:scale(.96)}
     .vtab svg{display:block;width:22px;height:22px;stroke-width:1.7}
     .navmore{display:flex}
     /* the page has to clear the floating bar, and the notch at the other end */
-    .wrap{padding-top:calc(24px + env(safe-area-inset-top));
+    .wrap{padding-top:20px;
           padding-bottom:calc(80px + var(--navgap))}
   }
+  /* ---------- one-line header (desktop only) ----------
+     Brand, tabs and actions on a single row, with the tabs sitting directly
+     beside the brand rather than centred in the window.
+     Scoped to min-width:701px on purpose: below that the header row is hidden
+     and this element is the floating bottom bar, which none of this touches. */
+  @media(min-width:701px){
+    .brand{font-size:21px;gap:9px;flex:0 0 auto}
+    .brand svg{width:21px;height:21px}
+    /* Packed against the brand: identity, then place, then actions. The auto
+       margin absorbs the free space instead of space-between spreading the
+       three groups apart. flex:0 0 auto so the tabs never squeeze — if the row
+       runs out of width the actions wrap to a second line as a group. */
+    #viewNav{flex:0 0 auto;margin-right:auto;margin-bottom:0}
+    header .btns{flex:0 0 auto}
+  }
+
   /* ---------- year pills ---------- */
-  #tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  #tabs,#tabs2{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
   .tab{font-family:var(--mono);font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);
        background:var(--surface);cursor:pointer;color:var(--ink)}
-  .tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .tab.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
   /* ---------- cards ---------- */
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+  /* Edges are almost invisible and the separation comes from a shadow instead.
+     A 1px line around every card turns a dense dashboard into a grid of boxes;
+     the shadow says "this is a surface" without drawing a rectangle to prove it. */
+  .card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:20px;
+       box-shadow:var(--shadow)}
   h2{font-family:var(--serif);font-size:18px;margin:0 0 12px;font-weight:600}
   h2 .sub{font-family:inherit;font-weight:400;font-size:13px;color:var(--muted)}
   .cardhead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
   /* ---------- KPI row ---------- */
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
   @media(max-width:720px){.kpis{grid-template-columns:repeat(2,1fr)}}
-  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .kpi{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:18px;
+       box-shadow:var(--shadow)}
+  .kpi .l .kico{width:13px;height:13px;flex:none;stroke-width:1.9;opacity:.7}
   .kpi .l{display:flex;align-items:center;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;color:var(--muted)}
   .kpi .v{font-family:var(--mono);font-size:22px}
   .kdelta{font-family:var(--mono);font-size:11px;margin-top:4px;color:var(--muted)}
   .kdelta.up{color:var(--warn)}   /* spending more than last year */
   .kdelta.down{color:var(--good)} /* spending less */
   .dot{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
+  /* Category chip: the emoji sits on a wash of that category's own colour.
+     Kept small enough not to change the ledger row's rhythm. */
+  .catico{width:20px;height:20px;border-radius:50%;flex:none;
+          display:inline-flex;align-items:center;justify-content:center;
+          font-size:11px;line-height:1;font-style:normal}
   /* ---------- layout grids ---------- */
-  .charts2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  .charts2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}
   @media(max-width:900px){.charts2{grid-template-columns:1fr}}
   /* The trip page is not two equal halves: the ledger is the working surface
      and needs the room, the breakdown is a glance. 5/8 vs 3/8, same ratio
      rental_tracker uses for its ledger-plus-chart row. */
-  .tripmain{display:grid;grid-template-columns:5fr 3fr;gap:16px;margin-top:16px;align-items:start}
+  /* ---------- trips index ---------- */
+  .tgroup{margin-bottom:22px}
+  .tgroup > h3{font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--muted);
+       margin:0 0 10px;font-weight:400;display:flex;align-items:baseline;gap:10px}
+  .tgroup > h3 .gsum{font-size:11px}
+  .tripshead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+       flex-wrap:wrap;margin-bottom:14px}
+  .tripshead h2{margin:0}
+  /* The header already carries "+ New trip" on a wide screen, so the in-page
+     copy would be a second button for the same action. It exists only below
+     700px, which is exactly where the header row is hidden. One visible way to
+     start a trip in either layout, and still only one implementation. */
+  #tripsNewBtn{display:none}
+  @media(max-width:700px){ #tripsNewBtn{display:inline-flex} }
+  .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  /* The status strip is the card's top border rather than an extra element:
+     one less box, and it cannot drift out of alignment with the corners. */
+  /* The status strip. It was the card's border-top, which LOOKED far thinner
+     than its stated width: a thick border under a 14px radius tapers away at
+     both corners, so only the middle ever reached full height. As a clipped
+     ::before it is a true constant-height bar the full width of the card —
+     still no extra DOM node. --st is set per card from the status colour. */
+  .tcard{position:relative;overflow:hidden;padding-top:19px}
+  .tcard::before{content:"";position:absolute;left:0;right:0;top:0;height:7px;
+       background:var(--st,var(--line))}
+  @media(prefers-reduced-motion:reduce){
+    .tcard{transition:none}
+    .tcard:hover,.tcard:active{transform:none}
+  }
+  .tc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+  /* The purpose tile. It used to be the same pin on every card — the most
+     prominent icon slot on the card, saying nothing. Now it is the purpose emoji
+     on a wash of the purpose colour, so tile, strip and word all agree. */
+  .tc-pin{width:30px;height:30px;border-radius:9px;flex:none;font-size:16px;line-height:1;
+       display:inline-flex;align-items:center;justify-content:center}
+  .tc-status{font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+       padding:3px 8px;border-radius:999px;font-weight:700}
+  /* A button, not a div: keyboard focus and Enter come free, and the whole card
+     is the hit target rather than a link buried inside it. */
+  .tcard{display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;
+       background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:16px;
+       font-family:inherit;color:var(--ink);box-shadow:var(--shadow);
+       transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+  /* Lifts on hover: 2px is enough to read as "this is pickable" without the
+     grid appearing to wobble as the pointer crosses it. Pressing settles it
+     back down, so the click has somewhere to land. */
+  .tcard:hover{border-color:var(--line);box-shadow:var(--shadow-lift);
+       transform:translateY(-2px)}
+  .tcard:active{transform:translateY(0) scale(.995)}
+  .tcard .tc-name{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.2}
+  .tcard .tc-where{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);
+       min-height:16px}
+  .tcard .tc-where svg{width:11px;height:11px;flex:none;stroke-width:2;fill:none}
+  /* Names the colour. A purpose-tinted strip with no purpose on the card would
+     be decoration — this is the label that makes it mean something. */
+  .tcard .tc-purpose{color:var(--st);font-weight:600}
+  .tcard .tc-dates{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .tcard .tc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;
+       margin-top:2px;flex-wrap:wrap}
+  .tcard .tc-amt{font-family:var(--mono);font-size:19px}
+  .tripmain{display:grid;grid-template-columns:5fr 3fr;gap:18px;margin-top:20px;align-items:start}
   @media(max-width:900px){.tripmain{grid-template-columns:1fr}}
   .full{grid-column:1/-1}
   /* Every canvas sits in a fixed-height, position:relative box and fills it
@@ -215,10 +475,29 @@
      slightly bigger number back in and the chart creeps out of its card. A
      `max-height` on the canvas can't stop it — the inline style wins. Pinning
      the box height and taking the canvas out of flow breaks the loop for good. */
+  /* ---------- by year: the trip timeline ----------
+     A calendar strip rather than a chart: absolute positions are percentages
+     of the year, so the row a trip sits on is its real place in the year. */
+  .tl-months{position:relative;height:17px}
+  .tl-months span{position:absolute;top:0;font-family:var(--mono);font-size:10px;
+       letter-spacing:.04em;color:var(--muted)}
+  .tl-body{position:relative;padding:2px 0}
+  .tl-gl{position:absolute;top:0;bottom:0;width:1px;background:var(--hair)}
+  .tl-now{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);opacity:.4}
+  .tl-row{position:relative;height:40px}
+  /* min-width so a two-night trip still has room for its icon: below about a
+     week the bar is wider than the stay it draws, which is the one place this
+     strip is not to scale. */
+  .tl-bar{position:absolute;top:4px;height:32px;min-width:34px;box-sizing:border-box;
+       border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1}
+  .tl-label{position:absolute;top:4px;height:32px;display:flex;align-items:center;gap:7px;
+       font-size:12.5px;white-space:nowrap}
+  .tl-label .nm{font-weight:600}
+  .tl-label .amt{font-family:var(--mono);color:var(--muted)}
+  .tl-label.soon .nm{color:var(--muted);font-weight:500}
   .chartbox{position:relative;width:100%;height:280px}
   .chartbox > canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
   .chartbox.sm{height:240px}
-  .chartbox.xs{height:180px}
   .flowcap{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
   /* ---------- tables ---------- */
   table{width:100%;border-collapse:collapse;font-size:14px}
@@ -259,95 +538,127 @@
   tr.click:hover td{background:var(--soft)}
   .pill{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
         padding:2px 7px;border-radius:999px;background:var(--soft);color:var(--muted);border:1px solid var(--line)}
-  .pill.future{background:#EAF2F7;color:#3E7CB1;border-color:#CBE0EC}
-  .pill.est{background:#FFF4DE;color:#8A6D1F;border-color:#E8D6A8}
+  .pill.future{background:var(--info-bg);color:var(--flights);border-color:var(--info-line)}
+  .pill.est{background:var(--amber-pill);color:var(--amber-deep);border-color:var(--amber-pill-line)}
   /* An estimated amount is drawn in outline, not solid: it should never read as
      settled money at a glance, even before you notice the pill next to it. */
   .amt.est{color:var(--muted);font-style:italic}
   /* Home from a trip with guesses still on the ledger — the one failure mode
      that turns this feature into fake history, so it gets a full-width strip. */
-  .warnbar{background:#FFF8E6;border:1px solid #EBDCB2;border-radius:10px;padding:11px 14px;
-       font-size:13px;color:#6B5A28;margin-bottom:16px;line-height:1.55;display:none}
+  .warnbar{background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:10px;padding:11px 14px;
+       font-size:13px;color:var(--amber-ink);margin-bottom:16px;line-height:1.55;display:none}
   .warnbar.show{display:block}
-  .warnbar a{color:#6B5A28;cursor:pointer;text-decoration:underline}
+  .warnbar a{color:var(--amber-ink);cursor:pointer;text-decoration:underline}
+  /* Offline notice. Deliberately calmer than the estimate warning: nothing is
+     wrong with the data, it is simply not live, and the app still works. */
+  .offbar{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 14px;
+       font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.55;display:none}
+  .offbar.show{display:block}
+  .offbar b{color:var(--ink);font-weight:600}
   /* budget-vs-actual bar rendered inside a cell */
   .bar{height:7px;border-radius:4px;background:var(--hair);position:relative;overflow:hidden;min-width:60px}
   .bar > i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--accent)}
   .bar > i.over{background:var(--warn)}
   /* ---------- trip ledger ---------- */
-  .ledger{display:flex;flex-direction:column;gap:5px;max-height:430px;overflow:auto;padding-right:4px}
-  /* date · category · note · flags · amount · edit · delete
-     The flags get their OWN column. They used to live inside .n, which
-     truncates with an ellipsis — so a long note silently ate the "estimate"
-     pill and a medium one ate it while leaving "prepaid" visible. Status must
-     never be truncatable; only the note text is allowed to be clipped. */
-  /* Tightened: the date is five mono characters (MM-DD) and never needs 64px,
-     and the category has a colour dot doing half the work so its label can
-     truncate. minmax(0,1fr) rather than 1fr so the note column is actually
-     allowed to shrink and ellipsis — a bare 1fr refuses to go below its
-     content and pushes the row wide instead. */
-  .lrow{display:grid;grid-template-columns:42px 104px minmax(0,1fr) auto auto auto auto auto;
-        gap:6px;align-items:center;font-size:14px}
-  .lrow .flags{display:flex;gap:4px;white-space:nowrap}
-  /* Phones: the eight-column row folds into two lines. Line one is the note and
-     the amount; line two is the metadata. Every field survives — date, category,
-     as-paid, both pills, base amount, edit and delete. */
+  .ledger{display:flex;flex-direction:column;max-height:520px;overflow:auto;padding-right:4px}
+  /* The day header is the date, and only the date. It replaces a per-row date
+     column: one label per day rather than the same "24 Aug" on seven rows. */
+  .dayhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+       color:var(--muted);padding:12px 0 6px;border-bottom:1px solid var(--hair);margin-top:4px}
+  .dayhead:first-child{margin-top:0;padding-top:2px}
+  /* Two-line rows: name over category, amount over as-paid, then the two
+     actions. icon · body · amounts · edit · delete. The body is minmax(0,1fr)
+     so the note can ellipsis rather than push the row wide. */
+  .lrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto auto auto;
+        grid-template-areas:"ico body amts edit del";
+        gap:0 10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
+  .lrow > .catico{grid-area:ico;width:30px;height:30px;font-size:15px}
+  .lrow .body{grid-area:body;min-width:0}
+  .lrow .n{font-weight:500;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lrow .meta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:3px;
+       flex-wrap:wrap;min-height:14px}
+  .lrow .amts{grid-area:amts;text-align:right}
+  .lrow .amt{font-family:var(--mono);white-space:nowrap;display:block}
+  .lrow .orig{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;display:block;margin-top:2px}
+  .lrow .pencil{grid-area:edit}
+  .lrow .trash{grid-area:del}
+  /* Phones: the row is already two lines and carries no date, so nothing has
+     to fold — only the tap targets grow. */
   @media(max-width:700px){
-    .lrow{grid-template-columns:minmax(0,1fr) auto auto auto;
-          grid-template-areas:"note note amt amt" "meta flags edit del";
-          row-gap:3px;padding:7px 0;border-bottom:1px solid var(--hair)}
-    .lrow .n{grid-area:note;font-size:14px}
-    .lrow .amt{grid-area:amt;font-size:15px}
-    .lrow .d{grid-area:meta;display:none}
-    .lrow .cat{grid-area:meta;font-size:11px}
-    .lrow .cat::after{content:" · " attr(data-d);white-space:pre}
-    .lrow .orig{grid-area:meta;justify-self:end;align-self:center}
-    .lrow .flags{grid-area:flags}
-    .lrow .pencil{grid-area:edit;font-size:16px;padding:4px}
-    .lrow .trash{grid-area:del;font-size:16px;padding:4px}
+    /* Apple's minimum is 44x44 and these were 21x24 — two small targets side
+       by side, one of them destructive, on the screen used most while away.
+       The glyphs keep their size; only the box around them grows, and the body
+       column gives up the width because it can ellipsis and they cannot. */
+    .lrow .pencil,.lrow .trash{font-size:16px;padding:0;width:36px;height:44px;
+         display:inline-flex;align-items:center;justify-content:center}
     .ledger{max-height:none}
   }
-  .lrow .d{font-family:var(--mono);color:var(--muted);font-size:12px;white-space:nowrap}
-  .lrow .cat{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);min-width:0}
-  /* The label needs its own box to ellipsis in — a flex container cannot. */
-  .lrow .cat span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .lrow .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-  .lrow .amt{font-family:var(--mono);text-align:right;white-space:nowrap}
-  /* As-paid sits BESIDE the base amount, not under it. Stacking it made a
-     foreign row two lines tall, so a mixed-currency ledger had ragged row
-     heights and no clean column of figures to scan. The base amount stays
-     right-aligned regardless, because the fixed-width ✎ ✕ buttons anchor it. */
-  .lrow .orig{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
-  .trash{border:0;background:none;color:rgba(181,101,74,.55);cursor:pointer;padding:2px;font-size:14px;line-height:1}
+  /* ---------- breakdown: bars by default, donut a click away ---------- */
+  .bdhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .bdhead h2{margin:0}
+  .bdtoggle{display:inline-flex;gap:2px;background:var(--hair);border-radius:8px;padding:2px}
+  .bdtoggle button{display:inline-flex;align-items:center;padding:4px 9px;border-radius:6px;border:0;
+       background:none;color:var(--muted);cursor:pointer;line-height:1}
+  .bdtoggle .tgico{width:15px;height:15px;stroke-width:2}
+  /* Card-title icon. Inline-block so it sits in the heading's text flow and the
+     "· subtitle" span keeps following the words as before. */
+  h2 > .h2ico{display:inline-block;width:17px;height:17px;stroke-width:1.9;color:var(--muted);
+       vertical-align:-2px;margin-right:8px}
+  /* Breakdown titles are flex rows (they carry the toggle); gap does the spacing. */
+  .bdhead h2{display:flex;align-items:center;gap:8px}
+  .bdhead h2 .h2ico{flex:none;margin-right:0}
+  .bdtoggle button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-toggle)}
+  /* On a phone a serif title and a four-button toggle cannot share a line: the
+     title was squeezed into two, with its subtitle wrapping under the icon.
+     The toggle drops below instead, which costs one row and reads properly. */
+  @media(max-width:560px){
+    .bdhead{flex-wrap:wrap;gap:8px}
+    .bdhead h2{flex:1 1 100%}
+  }
+  .bdlist{display:flex;flex-direction:column}
+  .brow{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:0 10px;align-items:center;padding:7px 0}
+  .brow .catico{width:24px;height:24px;font-size:12px;border-radius:7px}
+  .brow .bl{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .brow .ba{font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .brow .ba .est{color:var(--amber-deep);font-size:11px;margin-left:5px}
+  .brow .ba .pc{color:var(--muted);font-size:11px;margin-left:6px}
+  /* ---------- overview: category share as a heat grid ---------- */
+  .heatwrap{overflow-x:auto}
+  .heat{width:100%;border-collapse:separate;border-spacing:3px;font-variant-numeric:tabular-nums}
+  .heat th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+       font-weight:500;padding:4px 6px;text-align:center;border:0}
+  .heat th:first-child{text-align:left}
+  .heat td{padding:0;border:0;text-align:center}
+  .heat td.lab{font-size:13px;white-space:nowrap;padding-right:8px;text-align:left;font-family:inherit}
+  .heat td.lab .catico{width:22px;height:22px;font-size:11px;border-radius:7px;vertical-align:middle;margin-right:8px}
+  .heat .cell{display:flex;align-items:center;justify-content:center;height:34px;min-width:52px;border-radius:7px;
+       font-family:var(--mono);font-size:12.5px}
+  .heat .cell.z{color:var(--line);background:var(--soft)}
+  .heat .cell.top{font-weight:600;box-shadow:inset 0 0 0 1.5px currentColor}
+  /* ---------- overview: category share as one tile per category ---------- */
+  .smgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .smc{border:1px solid var(--hair);border-radius:10px;padding:10px 12px;background:var(--soft);min-width:0}
+  .smc .t{display:flex;align-items:center;gap:7px;font-size:12.5px;white-space:nowrap}
+  .smc .t .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .smc .t .catico{width:20px;height:20px;font-size:10px;border-radius:6px}
+  .smc .t .now{margin-left:auto;font-family:var(--mono);font-size:13px}
+  .smc svg{width:100%;height:46px;display:block;margin-top:6px;overflow:visible}
+  .smc .yrs{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+  .smc .d{font-family:var(--mono);font-size:11px;margin-top:3px;color:var(--muted)}
+  .smc .d.up{color:var(--warn)} .smc .d.down{color:var(--good)}
+  #destCap b{font-weight:600;color:var(--ink)}
+  .brow .bar{grid-column:2/4;display:flex;height:4px;border-radius:2px;background:var(--hair);
+       margin-top:5px;overflow:hidden}
+  .brow .bar i{display:block;height:100%}
+  .trash{border:0;background:none;color:var(--trash-idle);cursor:pointer;padding:2px;font-size:14px;line-height:1}
   .trash:hover{color:var(--warn)}
   .pencil{border:0;background:none;color:var(--muted);cursor:pointer;padding:2px;font-size:13px;line-height:1}
   .pencil:hover{color:var(--accent)}
-  /* Inline edit row — the ledger row is replaced in place by the same controls
-     as the add row, pre-filled. Same flex-wrap treatment as .addrow, for the
-     same reason: too many controls to hold in fixed columns without crushing
-     the note. Tinted and outlined so it's obvious which row you're editing. */
-  .editrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
-           background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:9px}
-  .editrow > *{flex:0 0 auto}
-  .editrow .grow{flex:1 1 200px;min-width:160px}
-  /* shared by the add row and the edit row */
+  /* the two flags, in the line dialog */
   .chk{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
   .chk input{width:auto}
   .btn.sm{padding:5px 11px;font-size:13px}
   .empty{color:var(--muted);font-size:13px;font-style:italic;padding:6px 0}
-  /* add-entry row: date · category · note · amount · currency · fx · +
-     Flex, deliberately NOT grid. A 7-column fixed grid overflowed this card —
-     the fixed columns summed to more than the inner width, so the note's 1fr
-     clamped to a couple of pixels and you couldn't see what you were typing.
-     Flex with wrapping gives the note a real minimum and pushes the numeric
-     controls onto a second line when there isn't room, instead of crushing them. */
-  .addrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
-          margin-top:10px;border-top:1px solid var(--hair);padding-top:10px}
-  .addrow > *{flex:0 0 auto}                      /* fixed-width controls by default */
-  .addrow .grow{flex:1 1 220px;min-width:180px}   /* the note — never allowed to collapse */
-  /* Explicit widths beat the generic `input,select{width:100%}` below on
-     specificity (class 0-1-0 vs element 0-0-1), so no !important needed. */
-  .w-date{width:136px} .w-cat{width:130px} .w-amt{width:108px} .w-cur{width:82px} .w-fx{width:98px}
   input,select,textarea{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:7px 9px;
        font-size:14px;color:var(--ink);width:100%;font-family:inherit}
   /* iOS zooms the whole page in whenever you focus a field whose text is under
@@ -358,10 +669,18 @@
     input,select,textarea{font-size:16px;padding:9px 10px}
   }
   input.mono,select.mono{font-family:var(--mono)}
-  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,111,98,.12)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
   input:disabled{background:var(--soft);color:var(--muted)}
-  .addbtn{border:0;background:var(--accent);color:#fff;border-radius:7px;width:32px;height:32px;font-size:18px;
-       cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+  .ledgerhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+  .ledgerhead h2{margin:0}
+  .pill.purp{margin-left:4px;white-space:nowrap;font-weight:700}
+  #itemModalTitle{display:flex;align-items:center;gap:9px}
+  #itemModalTitle .catico{width:28px;height:28px;font-size:15px}
+  /* The flag labels sit inside .fgrid, whose labels are uppercase caption
+     style; these are controls, not captions, so they opt back out. */
+  .fgrid .flags{display:flex;gap:18px;align-items:center}
+  .fgrid .flags label{text-transform:none;letter-spacing:0;display:inline-flex;font-size:13.5px;
+       color:var(--ink);margin:0;font-weight:400}
   .amtwrap{position:relative}
   .amtwrap .cur{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px}
   .amtwrap input{padding-left:26px}
@@ -369,14 +688,27 @@
   /* Picker left, actions right, wrapping to two lines on a narrow screen
      rather than squeezing either. The select is capped so it doesn't stretch
      to absurd widths on a wide display. */
-  .triphead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
-  .triphead .tsel{flex:1 1 260px;min-width:200px;max-width:420px;
-       font-family:var(--serif);font-size:17px;font-weight:600;padding:9px 11px}
+  .triphead{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:14px 16px}
+  .tident{display:flex;align-items:flex-start;gap:14px;min-width:0}
+  /* Same tile as the trip card, one size up — the thread from the card you
+     clicked to the page it opened. Background is set per trip from the purpose. */
+  .ttile{width:40px;height:40px;border-radius:12px;flex:none;font-size:21px;line-height:1;
+       display:inline-flex;align-items:center;justify-content:center;margin-top:2px}
+  .tnamerow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tname{font-family:var(--serif);font-size:28px;font-weight:600;margin:0;line-height:1.1;
+       overflow-wrap:anywhere}
+  .tactions{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap}
+  .btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+  .btn.ghost:hover{background:var(--surface);border-color:var(--line);color:var(--ink)}
   /* The facts line: free-flowing, so a long date range simply wraps to the
      next line instead of forcing a column wider than its neighbours. */
-  .tripmeta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:12px;
+  .tripmeta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:7px;
        font-size:13px;color:var(--muted)}
   .tripmeta b{font-family:var(--mono);font-weight:400;color:var(--ink)}
+  .tripmeta .muted{font-family:var(--mono)}
+  /* Its own line, not another "·" item: it is a sentence, and wrapping it into
+     the chip row left it reading as one more attribute of the trip. */
+  .metanote{flex-basis:100%;font-size:12px;color:var(--muted);margin-top:2px}
   .tripmeta .sep{width:1px;height:12px;background:var(--line)} /* hairline divider, hidden when it wraps to a line start */
   /* ---------- legend + mini stats ---------- */
   .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--muted)}
@@ -386,31 +718,40 @@
   .mini{background:var(--soft);border-radius:8px;padding:10px 12px}
   .mini .ml{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   .mini .mv{font-family:var(--mono);font-size:16px;margin-top:3px}
-  /* ---------- lifetime strip ---------- */
-  #lifetime{background:var(--accent);color:#fff;border-radius:12px;padding:18px;margin-top:16px;
-       display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
-  @media(max-width:720px){#lifetime{grid-template-columns:repeat(2,1fr)}}
-  #lifetime .ll{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.72)}
-  #lifetime .lv{font-family:var(--mono);font-size:18px;margin-top:3px}
   /* ---------- estimator ---------- */
   .estgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end}
   @media(max-width:720px){.estgrid{grid-template-columns:repeat(2,1fr)}}
+  .fgrid label .opt{text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400}
   .estgrid label,.fgrid label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block;margin-bottom:4px}
   .estout{background:var(--soft);border-radius:10px;padding:14px;margin-top:12px;text-align:center}
   .estout .big{font-family:var(--mono);font-size:26px;color:var(--accent);font-weight:600}
   .estout .det{font-size:12px;color:var(--muted);margin-top:4px}
   /* ---------- modals ---------- */
-  .modal-bg{position:fixed;inset:0;background:rgba(30,42,48,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal-bg{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
   .modal-bg.open{display:flex}
+  #tripModalTitle{display:flex;align-items:center;gap:9px}
+  #tripModalTitle .h3ico{width:19px;height:19px;flex:none;stroke-width:1.9;color:var(--accent)}
+  /* --vvh is the VISUAL viewport height, set from JS. iOS does not shrink the
+     layout viewport when the keyboard opens, so a dialog sized against vh
+     keeps its full height and puts its own Save button under the keyboard. */
   .modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;
-         padding:20px;max-height:90vh;overflow:auto}
+         padding:20px;max-height:calc(var(--vvh, 90vh) - 40px);overflow:auto}
+  /* Anchored to the top on a phone rather than centred: with the keyboard up
+     there is no centre left to sit in, and a dialog that grows downwards keeps
+     its first field where the thumb expects it. */
+  @media(max-width:700px){
+    .modal-bg{align-items:flex-start;padding:12px}
+    .modal{max-height:calc(var(--vvh, 100vh) - 24px)}
+  }
   .modal h3{font-family:var(--serif);font-size:19px;margin:0 0 4px}
   .modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
   .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
   .fgrid .wide{grid-column:1/-1}
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  .modalhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .modalhead h3{margin:0 0 4px}
   .modal .note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
-  .err{background:#FDF0EC;border:1px solid #EBC9BE;color:#8C4530;border-radius:8px;padding:8px 11px;
+  .err{background:var(--danger-bg);border:1px solid var(--danger-line);color:var(--danger-ink);border-radius:8px;padding:8px 11px;
        font-size:13px;margin-bottom:12px;display:none}
   .err.show{display:block}
   /* snapshot list */
@@ -429,46 +770,64 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<!-- ===== header =====
+     Outside .wrap on purpose: the band and its hairline run to both window
+     edges so the chrome reads as separate from the page, while .hwrap keeps the
+     contents on the same column as everything below. -->
+<header>
+  <div class="hwrap">
+      <!-- Just the name. The currency used to be spelled out here, but the
+           dropdown two controls along already says it — and saying it twice
+           invites them to disagree. -->
+      <h1 class="brand">
+        <!-- Same dart as the app icon and the Homer tile. The fold is stroked in
+             the colour BEHIND it rather than being a gap in the geometry, exactly
+             as the icon does it — so it tracks the header band's background,
+             currently --paper. Change `header{background}` and this stroke has
+             to change with it, or the fold draws a visible line across the dart. -->
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="22.56,1.68 1.44,12.00 10.56,13.92" fill="currentColor"/>
+          <polygon points="22.56,1.68 10.56,13.92 12.72,22.56" fill="currentColor"/>
+          <path d="M22.56,1.68 L10.56,13.92" stroke="var(--paper)" stroke-width="0.67"/>
+        </svg>
+        Holiday Ledger
+      </h1>
+      <!-- Overview / By year / Trips. Lives in the header so the three sit on one
+           line with the brand and the actions. On phones this same element becomes
+           the fixed bottom bar — it is position:fixed there, and no ancestor sets
+           transform or filter, so being nested here does not change that. -->
+      <div id="viewNav"></div>
 
-  <!-- ===== header ===== -->
-  <header>
-    <!-- Just the name. The currency used to be spelled out here, but the
-         dropdown two controls along already says it — and saying it twice
-         invites them to disagree. -->
-    <h1 class="brand">
-      <!-- Same dart as the app icon and the Homer tile. The fold is stroked in
-           the page colour rather than being a gap in the geometry, exactly as
-           the icon does it — so it only reads correctly on --paper, which is
-           the only background this header ever sits on. -->
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <polygon points="22.56,1.68 1.44,12.00 10.56,13.92" fill="currentColor"/>
-        <polygon points="22.56,1.68 10.56,13.92 12.72,22.56" fill="currentColor"/>
-        <path d="M22.56,1.68 L10.56,13.92" stroke="var(--paper)" stroke-width="0.67"/>
-      </svg>
-      Holiday Ledger
-    </h1>
-    <!-- Desktop only. On phones this whole row is hidden and its actions
-         reappear as the fourth tab in the bottom bar, within thumb reach. -->
-    <div class="btns">
-      <button class="btn" id="ratesBtn">↻ <span id="ratesLbl">Rates update</span></button>
-      <select id="dispCur" class="mono" aria-label="Show amounts in" title="Show amounts in"></select>
-      <div class="menuwrap">
-        <button class="btn" id="setMenuBtn" aria-haspopup="menu" aria-expanded="false">⚙ Settings ▾</button>
-        <div class="menu" id="setMenu" role="menu">
-          <button class="mrow" id="setBtn">⚙ Currencies &amp; rates</button>
-          <div class="msep"></div>
-          <!-- Save is a plain link to the export endpoint; `download` forces a file save -->
-          <a class="mrow" id="saveLink" href="/api/export" download>⬇ Save a backup</a>
-          <button class="mrow" id="loadBtn">⬆ Load a backup</button>
-          <button class="mrow" id="restoreBtn">⟲ Restore a snapshot</button>
+      <!-- Desktop only. On phones this whole row is hidden and its actions
+           reappear as the fourth tab in the bottom bar, within thumb reach. -->
+      <div class="btns">
+        <button class="btn" id="ratesBtn">↻ <span id="ratesLbl">Rates</span></button>
+        <select id="dispCur" class="mono" aria-label="Show amounts in" title="Show amounts in"></select>
+        <!-- One button that cycles light → dark → auto. A header has room for
+             one control, not three, and the current mode is the only one worth
+             showing; the phone sheet lays all three out where there is space.
+             Filled from THEME_MODES so the two can never disagree. -->
+        <button class="btn" id="themeBtn"></button>
+        <div class="menuwrap">
+          <button class="btn" id="setMenuBtn" aria-haspopup="menu" aria-expanded="false"
+                  aria-label="Settings" title="Settings"></button>
+          <div class="menu" id="setMenu" role="menu">
+            <button class="mrow" id="setBtn">⚙ Currencies &amp; rates</button>
+            <div class="msep"></div>
+            <!-- Save is a plain link to the export endpoint; `download` forces a file save -->
+            <a class="mrow" id="saveLink" href="/api/export" download>⬇ Save a backup</a>
+            <button class="mrow" id="loadBtn">⬆ Load a backup</button>
+            <button class="mrow" id="restoreBtn">⟲ Restore a snapshot</button>
+          </div>
         </div>
+        <button class="btn primary" id="newTripBtn">+ New trip</button>
       </div>
-      <button class="btn primary" id="newTripBtn">+ Trip</button>
-    </div>
-    <!-- Sits outside .btns so hiding that row on phones cannot reach it. -->
-    <input id="fileInput" type="file" accept="application/json" style="display:none" />
-  </header>
+      <!-- Sits outside .btns so hiding that row on phones cannot reach it. -->
+      <input id="fileInput" type="file" accept="application/json" style="display:none" />
+  </div>
+</header>
+
+<div class="wrap">
 
   <!-- Shown only while the store is empty — an app with no data and eight blank
        charts looks broken rather than new. -->
@@ -484,7 +843,7 @@
   <div id="app" style="display:none">
     <div class="convbar" id="convBar"></div>
     <div class="warnbar" id="staleBar"></div>
-    <div id="viewNav"></div>   <!-- Overview / By year / Trips -->
+    <div class="offbar" id="offBar"></div>
     <div id="tabs"></div>      <!-- year pills (year view only) -->
 
     <!-- =========================================================
@@ -493,9 +852,20 @@
     <div id="overviewView">
       <div class="kpis" id="ovKpis"></div>
 
+      <!-- Four ways to slice the same yearly totals; one canvas, one toggle.
+           The purpose view is the default because it is the one only this app
+           can draw — a bank statement knows the category, not the kind of trip. -->
       <div class="charts2">
         <div class="card full">
-          <h2>Spend by year <span class="sub">· stacked by category</span></h2>
+          <div class="bdhead">
+            <h2 id="ovSpendTitle">Spend by year <span class="sub" id="ovSpendSub"></span></h2>
+            <div class="bdtoggle" id="ovSpendToggle" role="tablist" aria-label="Spend by year view">
+              <button data-m="cat" title="By category" aria-label="Stacked by category"></button><button
+                data-m="purpose" title="By trip purpose" aria-label="Stacked by trip purpose"></button><button
+                data-m="trip" title="By trip" aria-label="One block per trip"></button><button
+                data-m="lines" title="Category lines" aria-label="Category lines"></button>
+            </div>
+          </div>
           <div class="chartbox"><canvas id="chYears"></canvas></div>
           <div class="legend" id="legYears"></div>
           <div class="flowcap" id="capYears"></div>
@@ -504,46 +874,78 @@
 
       <div class="charts2">
         <div class="card">
-          <h2>Cost per person per day <span class="sub">· the comparable number</span></h2>
+          <h2 id="ovPPDTitle">Cost per person per day <span class="sub">· the comparable number</span></h2>
           <div class="chartbox"><canvas id="chCpppd"></canvas></div>
           <div class="flowcap">Total spend ÷ (nights × travellers). This is the figure that survives
             comparing a 3-night city break to a 15-night trip — raw yearly totals do not.</div>
         </div>
+        <!-- The trip-page Breakdown, fed with every year at once. -->
         <div class="card">
-          <h2>Category share over time <span class="sub">· % of spend</span></h2>
-          <div class="chartbox"><canvas id="chShare"></canvas></div>
-          <div class="flowcap" id="capShare"></div>
+          <div class="bdhead">
+            <h2 id="ovBdTitle">Where it went</h2>
+            <div class="bdtoggle" id="ovBdToggle" role="tablist" aria-label="Breakdown view">
+              <button data-bd="bars" class="on" title="Bars" aria-label="Show as bars"></button><button
+                data-bd="donut" title="Donut" aria-label="Show as donut"></button>
+            </div>
+          </div>
+          <div class="bdlist" id="ovBdBars"></div>
+          <div id="ovBdDonut">
+            <div class="chartbox sm"><canvas id="chOvCats"></canvas></div>
+            <div class="legend" id="legOvCats"></div>
+          </div>
+          <div class="flowcap" id="ovBdCap"></div>
         </div>
       </div>
 
       <div class="charts2">
         <div class="card">
-          <h2>Destinations <span class="sub">· ranked by cost per person per day</span></h2>
-          <div id="destTable"></div>
+          <div class="bdhead">
+            <h2 id="ovShareTitle">Category share <span class="sub" id="ovShareSub"></span></h2>
+            <div class="bdtoggle" id="ovShareToggle" role="tablist" aria-label="Category share view">
+              <button data-m="stack" title="Stacked" aria-label="Stacked to 100%"></button><button
+                data-m="grid" title="Heat grid" aria-label="Heat grid"></button><button
+                data-m="lines" title="Lines" aria-label="Share as lines"></button><button
+                data-m="tiles" title="One tile per category" aria-label="One tile per category"></button>
+            </div>
+          </div>
+          <!-- stack and lines share the canvas; grid and tiles are plain markup -->
+          <div id="ovShareChart">
+            <div class="chartbox"><canvas id="chShare"></canvas></div>
+            <div class="legend" id="legShare"></div>
+          </div>
+          <div class="heatwrap" id="ovShareGrid"></div>
+          <div class="smgrid" id="ovShareTiles"></div>
+          <div class="flowcap" id="capShare"></div>
         </div>
         <div class="card">
-          <h2>Value map <span class="sub">· enjoyment vs burn rate</span></h2>
+          <h2 id="ovDestTitle">Destinations <span class="sub">· ranked by cost per person per day</span></h2>
+          <div id="destTable"></div>
+          <div class="flowcap" id="destCap"></div>
+        </div>
+      </div>
+
+      <div class="charts2">
+        <div class="card full">
+          <h2 id="ovValueTitle">Value map <span class="sub">· enjoyment vs burn rate</span></h2>
           <div class="chartbox"><canvas id="chValue"></canvas></div>
-          <div class="flowcap">X = cost per person per day, Y = your 1–5 rating. Top-left is the
+          <div class="flowcap">X = cost per person per day, Y = your 1–5 rating, colour = purpose. Top-left is the
             sweet spot: trips you loved that cost little per day. Rate a trip to place it here.</div>
         </div>
       </div>
 
       <div class="card" style="margin-top:16px">
-        <h2>Trip cost estimator <span class="sub">· priced from your own history</span></h2>
+        <h2 id="ovEstTitle">Trip cost estimator <span class="sub">· priced from your own history</span></h2>
         <div class="estgrid">
           <div><label for="estDest">Destination</label><select id="estDest" class="mono"></select></div>
-          <div><label for="estNights">Nights</label><input id="estNights" class="mono" type="number" min="1" value="7" /></div>
-          <div><label for="estPeople">Travellers</label><input id="estPeople" class="mono" type="number" min="1" /></div>
-          <div><label for="estInfl">Uplift %/yr</label><input id="estInfl" class="mono" type="number" value="4" /></div>
+          <div><label for="estNights">Nights</label><input id="estNights" class="mono" type="number" inputmode="numeric" min="1" value="7" /></div>
+          <div><label for="estPeople">Travellers</label><input id="estPeople" class="mono" type="number" inputmode="numeric" min="1" /></div>
+          <div><label for="estInfl">Uplift %/yr</label><input id="estInfl" class="mono" type="number" inputmode="decimal" value="4" /></div>
         </div>
         <div class="estout" id="estOut"></div>
         <div class="flowcap">Takes your actual per-person-per-day rate for that destination, ages it
           forward from the year you went at the uplift you set, and adds a flight allowance from the
           same trips. Not a forecast — a sanity check before you book.</div>
       </div>
-
-      <div id="lifetime"></div>
     </div>
 
     <!-- =========================================================
@@ -559,18 +961,35 @@
         </div>
       </div>
 
+      <!-- The same trips as the table above, but placed on the calendar: the
+           shape of the travel year, which no total can show. -->
+      <div class="charts2">
+        <div class="card full">
+          <h2 id="yrTlTitle">Trip timeline <span class="sub">· when you went, and what it cost</span></h2>
+          <div class="tl" id="yrTimeline"></div>
+          <div class="flowcap" id="capTimeline"></div>
+        </div>
+      </div>
+
       <div class="charts2">
         <div class="card">
-          <h2>Where it went <span class="sub">· this year</span></h2>
-          <div class="chartbox sm"><canvas id="chYrCats"></canvas></div>
-          <div class="legend" id="legYrCats"></div>
+          <div class="bdhead">
+            <h2 id="yrBdTitle">Where it went</h2>
+            <div class="bdtoggle" id="yrBdToggle" role="tablist" aria-label="Breakdown view">
+              <button data-bd="bars" class="on" title="Bars" aria-label="Show as bars"></button><button
+                data-bd="donut" title="Donut" aria-label="Show as donut"></button>
+            </div>
+          </div>
+          <div class="bdlist" id="yrBdBars"></div>
+          <div id="yrBdDonut">
+            <div class="chartbox sm"><canvas id="chYrCats"></canvas></div>
+            <div class="legend" id="legYrCats"></div>
+          </div>
         </div>
         <div class="card">
-          <h2>Committed vs on-the-ground <span class="sub">· by month paid</span></h2>
-          <div class="chartbox sm"><canvas id="chYrMonths"></canvas></div>
-          <div class="flowcap">Prepaid (flights, hotels, insurance — booked ahead) versus what you
-            actually spent while away. The gap is your cash-flow shape: booking months hurt long
-            before the holiday does.</div>
+          <h2 id="yrPaceTitle">Spend so far this year <span class="sub">· running total vs budget</span></h2>
+          <div class="chartbox sm"><canvas id="chYrPace"></canvas></div>
+          <div class="flowcap" id="capPace"></div>
         </div>
       </div>
     </div>
@@ -578,6 +997,14 @@
     <!-- =========================================================
          TRIPS — one trip at a time, with the editable ledger
     ========================================================== -->
+    <!-- Trips index. The "trip" view has two modes: this list when no trip is
+         selected, the ledger below when one is. Deliberately not a fourth view —
+         VIEWS and ICONS stay as they are, and so do the self check's invariants
+         about every view being routed and having a bottom-bar icon. -->
+    <div id="tripsView">
+      <div id="tripsList"></div>
+    </div>
+
     <div id="tripView">
       <!-- Row 1 holds only the two things that genuinely belong on one line:
            the picker and the actions. Row 2 carries the trip's facts as a
@@ -587,44 +1014,57 @@
            <select> needs to be, so the columns could not all fit and wrapped
            raggedly. Equal columns were the wrong shape for unequal content. -->
       <div class="card" style="margin-bottom:16px">
+        <!-- The trip's name is the page title. There used to be a <select> of every
+             trip here — the only way to reach one before the Trips index existed.
+             The index answers that now, so the top of the page stops being a picker
+             and becomes a heading: the same purpose tile as the card you clicked,
+             the name, the status, the facts line. -->
         <div class="triphead">
-          <select id="tripPick" class="tsel" title="Choose a trip"></select>
-          <div class="btns">
+          <div class="tident">
+            <span class="ttile" id="tripTile" aria-hidden="true"></span>
+            <div>
+              <div class="tnamerow">
+                <h2 class="tname" id="tripName"></h2>
+                <span class="tc-status" id="tripStatus"></span>
+              </div>
+              <div class="tripmeta" id="tripMeta"></div>
+            </div>
+          </div>
+          <div class="tactions">
+            <button class="btn ghost" id="allTripsBtn" title="Back to all trips">← All trips</button>
             <button class="btn" id="editTripBtn">Edit</button>
-            <button class="btn danger" id="delTripBtn">Delete</button>
+            <button class="btn danger" id="delTripBtn">Delete trip</button>
           </div>
         </div>
-        <div class="tripmeta" id="tripMeta"></div>
       </div>
 
       <div class="kpis" id="tripKpis"></div>
 
       <div class="tripmain">
         <div class="card">
-          <h2>Ledger <span class="sub">· every line item</span></h2>
+          <!-- No heading: the card is the ledger, and the first day header is a
+               better opening line than a label saying so. The one control is the
+               way in: lines are added and edited in a dialog, not inline. -->
+          <div class="ledgerhead"><h2 id="ledgerTitle">Expenses</h2><button class="btn primary sm" id="addItemBtn">+ Add line</button></div>
           <div class="ledger" id="tripLedger"></div>
-          <div class="addrow">
-            <input id="niDate" type="date" class="mono w-date" title="Date the money was spent" />
-            <select id="niCat" class="mono w-cat" title="Category"></select>
-            <input id="niNote" type="text" class="grow" placeholder="note (e.g. dinner, Trattoria da Enzo)" />
-            <div class="amtwrap w-amt"><span class="cur" id="niSym">£</span><input id="niAmt" class="mono" type="number" step="0.01" placeholder="0.00" title="Amount as spent" /></div>
-            <select id="niCur" class="mono w-cur" title="Currency it was paid in"></select>
-            <input id="niFx" class="mono w-fx" type="number" step="0.0001" title="Rate: base currency per 1 unit" />
-            <label class="chk" title="Paid ahead of the trip rather than while away"><input id="niPre" type="checkbox" /> prepaid</label>
-            <label class="chk" title="A planned figure, not money that has actually moved"><input id="niEst" type="checkbox" /> estimate</label>
-            <button class="addbtn" id="niAdd" title="Add line item">+</button>
-          </div>
-          <div class="flowcap" id="fxHint"></div>
         </div>
         <div class="card">
-          <h2>Breakdown</h2>
-          <div class="chartbox sm"><canvas id="chTripCats"></canvas></div>
-          <div class="legend" id="legTripCats"></div>
-          <h2 style="margin-top:18px">Paid in <span class="sub">· currency mix</span></h2>
+          <div class="bdhead">
+            <!-- Title icon and toggle glyphs are filled from KICON in renderTrip:
+                 one definition each, like every other inline icon in the app. -->
+            <h2 id="bdTitle">Breakdown</h2>
+            <div class="bdtoggle" id="bdToggle" role="tablist" aria-label="Breakdown view">
+              <button data-bd="bars" class="on" title="Bars" aria-label="Show as bars"></button><button
+                data-bd="donut" title="Donut" aria-label="Show as donut"></button>
+            </div>
+          </div>
+          <div class="bdlist" id="bdBars"></div>
+          <div id="bdDonut">
+            <div class="chartbox sm"><canvas id="chTripCats"></canvas></div>
+            <div class="legend" id="legTripCats"></div>
+          </div>
+          <h2 id="tripCurTitle" style="margin-top:18px">Paid in <span class="sub">· currency mix</span></h2>
           <div class="minis" id="tripCurrencies"></div>
-          <h2 style="margin-top:18px">Daily burn <span class="sub">· on-the-ground only</span></h2>
-          <div class="chartbox xs"><canvas id="chTripBurn"></canvas></div>
-          <div class="flowcap" id="capBurn"></div>
         </div>
       </div>
     </div>
@@ -644,6 +1084,8 @@
          the sheet on touch and is not part of the click-through wiring. -->
     <label class="sheetsel"><span class="ico">◎</span>Show amounts in
       <select id="dispCurM" class="mono" aria-label="Show amounts in"></select></label>
+    <div class="sheetsel segrow"><span class="ico">◐</span>Appearance
+      <div class="seg" data-seg="theme" role="group" aria-label="Appearance"></div></div>
     <div class="sheetsep"></div>
     <button class="sheetrow" data-do="saveLink"><span class="ico">⬇</span>Save a backup</button>
     <button class="sheetrow" data-do="loadBtn"><span class="ico">⬆</span>Load a backup</button>
@@ -663,21 +1105,77 @@
       <div class="wide"><label for="tfName">Name</label><input id="tfName" placeholder="e.g. Andalusia" /></div>
       <div><label for="tfCountry">Country</label><input id="tfCountry" placeholder="e.g. Spain" /></div>
       <div><label for="tfPurpose">Purpose</label>
-        <select id="tfPurpose">
-          <option>leisure</option><option>city break</option><option>family</option>
-          <option>ski</option><option>work</option><option>other</option>
-        </select></div>
+        <!-- Options are generated from PURPOSE in openTripModal — icon, colour and
+             the list itself all come from one object, the way the category select
+             is built from CATS. Nothing is typed here on purpose: a second copy of
+             the list is exactly what let "leisure" drift last time. -->
+        <select id="tfPurpose"></select></div>
       <div><label for="tfStart">Start</label><input id="tfStart" type="date" class="mono" /></div>
       <div><label for="tfEnd">End</label><input id="tfEnd" type="date" class="mono" /></div>
-      <div><label for="tfTravellers">Travellers</label><input id="tfTravellers" type="number" min="1" class="mono" /></div>
-      <div><label for="tfBudget">Budget</label><input id="tfBudget" type="number" step="0.01" class="mono" placeholder="0.00" /></div>
+      <div><label for="tfTravellers">Travellers</label><input id="tfTravellers" type="number" inputmode="numeric" min="1" class="mono" /></div>
+      <div><label for="tfBudget">Budget <span class="opt">(optional)</span></label><input id="tfBudget" type="number" inputmode="decimal" step="0.01" class="mono" placeholder="0.00" /></div>
       <div><label for="tfCurrency">Default currency</label><select id="tfCurrency" class="mono"></select></div>
-      <div><label for="tfRating">Rating (1–5, blank if not been yet)</label><input id="tfRating" type="number" min="1" max="5" class="mono" /></div>
-      <div class="wide"><label for="tfNote">Note</label><input id="tfNote" placeholder="optional" /></div>
+      <!-- Hidden when creating: you cannot rate a trip you have not taken. It
+           reappears on Edit, which is the only moment the answer exists. -->
+      <div id="tfRatingRow"><label for="tfRating">Rating <span class="opt">(1–5, optional)</span></label><input id="tfRating" type="number" inputmode="numeric" min="1" max="5" class="mono" /></div>
     </div>
     <div class="modal-actions">
       <button class="btn" data-close="tripModal">Cancel</button>
       <button class="btn primary" id="tripSave">Save trip</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Line item modal — one dialog for add AND edit =====
+     Replaces both the inline add row and the inline edit row, which were two
+     copies of the same eight controls. The tile in the title is live: it shows
+     the chosen category before you have typed anything, exactly as the saved
+     row will. -->
+<div class="modal-bg" id="itemModal">
+  <div class="modal">
+    <h3 id="itemModalTitle"><span class="catico" id="itemTile" aria-hidden="true"></span><span id="itemModalLabel">New line</span></h3>
+    <div class="err" id="itemErr"></div>
+    <div class="fgrid">
+      <div class="wide"><label for="niNote">Note</label><input id="niNote" placeholder="e.g. dinner, Trattoria da Enzo" /></div>
+      <div><label for="niCat">Category</label><select id="niCat" class="mono"></select></div>
+      <div><label for="niDate">Date</label><input id="niDate" type="date" class="mono" /></div>
+      <div><label for="niAmt">Amount</label>
+        <div class="amtwrap"><span class="cur" id="niSym">£</span><input id="niAmt" class="mono" type="number" inputmode="decimal" step="0.01" placeholder="0.00" /></div></div>
+      <div><label for="niCur">Paid in</label><select id="niCur" class="mono"></select></div>
+      <div class="wide"><label for="niFx">Rate <span class="opt">(base currency per 1 unit)</span></label>
+        <input id="niFx" class="mono" type="number" inputmode="decimal" step="0.0001" />
+        <div class="note" id="fxHint" style="margin-top:6px"></div></div>
+      <div class="wide flags">
+        <label class="chk" title="Paid ahead of the trip rather than while away"><input id="niPre" type="checkbox" /> prepaid</label>
+        <label class="chk" title="A planned figure, not money that has actually moved"><input id="niEst" type="checkbox" /> estimate</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" data-close="itemModal">Cancel</button>
+      <button class="btn" id="niSaveMore" title="Shift+Enter">Save &amp; add another</button>
+      <button class="btn primary" id="niSave" title="Enter">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Delete trip confirmation =====
+     Typing the name is the guard. A confirm() box is dismissed by reflex; a
+     name is not. The dialog also says what a delete costs (the whole ledger)
+     and what saves you (the snapshot taken first). -->
+<div class="modal-bg" id="delModal">
+  <div class="modal">
+    <h3 id="delTitle">Delete trip</h3>
+    <div class="sub" id="delSub"></div>
+    <div class="fgrid">
+      <div class="wide"><label for="delName">Type the trip's name to confirm</label>
+        <input id="delName" autocomplete="off" placeholder="" /></div>
+    </div>
+    <div class="note" style="margin-top:0">
+      A snapshot is written before the delete, so this can be undone from ⚙ → Restore a snapshot.
+    </div>
+    <div class="modal-actions">
+      <button class="btn" data-close="delModal">Cancel</button>
+      <button class="btn danger" id="delConfirm" disabled>Delete trip</button>
     </div>
   </div>
 </div>
@@ -696,7 +1194,7 @@
     <div class="fgrid" style="margin-top:14px">
       <div><label for="setBase">Base currency</label><select id="setBase" class="mono"></select>
         <div class="note" id="baseNote" style="margin-top:5px"></div></div>
-      <div><label for="setTrav">Default travellers</label><input id="setTrav" class="mono" type="number" min="1" /></div>
+      <div><label for="setTrav">Default travellers</label><input id="setTrav" class="mono" type="number" inputmode="numeric" min="1" /></div>
     </div>
     <div class="note">Nothing here is fetched from the internet — this app makes no outbound
       requests. Update rates by hand when they drift enough to matter.</div>
@@ -710,11 +1208,15 @@
 <!-- ===== Snapshot restore modal ===== -->
 <div class="modal-bg" id="snapModal">
   <div class="modal">
-    <h3>Restore a snapshot</h3>
+    <!-- Close sits in the title row: the list below can be 30 rows long, and the
+         way out should not be at the far end of it. -->
+    <div class="modalhead">
+      <h3>Restore a snapshot</h3>
+      <button class="btn" data-close="snapModal">Close</button>
+    </div>
     <div class="sub">One snapshot is written automatically before every change; the newest 30
       are kept. Restoring snapshots the current state first, so a restore is itself undoable.</div>
     <div id="snapList"></div>
-    <div class="modal-actions"><button class="btn" data-close="snapModal">Close</button></div>
   </div>
 </div>
 
@@ -731,29 +1233,43 @@
 // Mirrors PREPAID_BY_DEFAULT in server.js, which is the fallback when no
 // explicit flag is sent. Either way it is only a default — the checkbox wins.
 const CATS = [
-  { id:"flights",       label:"Flights",        css:"--flights",   pre:true  },
-  { id:"accommodation", label:"Accommodation",  css:"--stay",      pre:true  },
-  { id:"restaurants",   label:"Restaurants",    css:"--food",      pre:false },
-  { id:"activities",    label:"Activities",     css:"--activities",pre:false },
+  { id:"flights",       label:"Flights",        css:"--flights",   pre:true,  icon:"✈️" },
+  { id:"accommodation", label:"Stay",           css:"--stay",      pre:true,  icon:"🏨" },
+  { id:"restaurants",   label:"Food",           css:"--food",      pre:false, icon:"🍽️" },
+  { id:"activities",    label:"Activities",     css:"--activities",pre:false, icon:"🎟️" },
   // One bucket for pass, instructor and hire. These are trip-type-specific
   // costs, and the category list is a global dimension — splitting them three
-  // ways would add bands that are empty in every non-ski year and push adjacent
+  // ways would add bands that are empty in every non-snow year and push adjacent
   // colours below the readable threshold. The per-line note carries the detail.
-  { id:"ski",           label:"Ski",            css:"--ski",       pre:false },
-  { id:"transport",     label:"Transport",      css:"--transport", pre:false },
-  { id:"carrental",     label:"Car rental",     css:"--carrental", pre:true  },
-  { id:"shopping",      label:"Shopping",       css:"--shopping",  pre:false },
-  // Medical sits after Insurance, not next to Shopping: mulberry against clay
+  // ids are historical and stay put — each is written on stored line items and
+  // renaming one would be a data migration for a word. Labels are what people
+  // see: restaurants→Food, accommodation→Stay, medical→Health, ski→Snowboard.
+  { id:"ski",           label:"Snowboard",      css:"--ski",       pre:false, icon:"🏂" },
+  { id:"transport",     label:"Transport",      css:"--transport", pre:false, icon:"🚆" },
+  { id:"shopping",      label:"Shopping",       css:"--shopping",  pre:false, icon:"🛍️" },
+  // Health sits after Insurance, not next to Shopping: mulberry against clay
   // was the closest colour pair in the whole stack and the two bands blurred
   // together. Order here is display-only — the stored ids are unaffected.
-  { id:"insurance",     label:"Insurance/fees", css:"--insurance", pre:true  },
-  { id:"medical",       label:"Medical",        css:"--medical",   pre:false },
-  { id:"misc",          label:"Misc",           css:"--misc",      pre:false },
+  { id:"insurance",     label:"Insurance",      css:"--insurance", pre:true,  icon:"🛡️" },
+  { id:"medical",       label:"Health",         css:"--medical",   pre:false, icon:"❤️" },
+  { id:"misc",          label:"Misc",           css:"--misc",      pre:false, icon:"📦" },
 ];
 const CAT = Object.fromEntries(CATS.map(x => [x.id, x]));
 // Read a CSS variable so JS charts and the stylesheet never drift apart.
 const c = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const catColor = (id) => c(CAT[id] ? CAT[id].css : "--misc");
+// The emoji is a SECOND identification channel alongside the colour. That
+// matters here: the palette is at its practical limit (adjacent bands sit at a
+// minimum distance of ~61), so colour alone was carrying the whole load.
+const catIcon  = (id) => (CAT[id] ? CAT[id].icon : "📦");
+// A category's own colour, softened into a background wash for its icon chip,
+// so the chip and the chart band it corresponds to are visibly the same thing.
+const tint = (hex, a) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return "transparent";
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
 
 /* =============================================================
    SECTION 2 — API client
@@ -763,12 +1279,30 @@ const catColor = (id) => c(CAT[id] ? CAT[id].css : "--misc");
 ============================================================= */
 let DATA = { settings:{ baseCurrency:"GBP", currencies:[] }, trips:[] };
 
+// Set when the store came out of the service worker's cache rather than off
+// the server, with the time it was stored. Read by the offline strip, which is
+// the only thing standing between "your trips" and "your trips as of Tuesday".
+let servedFrom = { cached:false, at:null };
+
 async function api(method, path, body){
-  const r = await fetch(path, {
-    method,
-    headers: body ? { "Content-Type":"application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let r;
+  try {
+    r = await fetch(path, {
+      method,
+      headers: body ? { "Content-Type":"application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch(netErr) {
+    // Only GETs are ever served from the cache, so a throw here on a write is
+    // exactly what it looks like: the line was not saved. Say so in those words
+    // rather than surfacing "Failed to fetch" — with the original kept as the
+    // cause, so the console still has the real reason.
+    throw new Error(method === "GET"
+      ? "No connection to the server."
+      : "No connection to the server — nothing was saved.", { cause: netErr });
+  }
+  if (method === "GET" && path === "/api/data")
+    servedFrom = { cached: r.headers.get("X-From-Cache") === "1", at: r.headers.get("X-Cached-At") };
   let j = {};
   try { j = await r.json(); } catch(_) {}
   if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
@@ -816,7 +1350,6 @@ const pct    = (n) => (n>=0?"+":"") + n.toFixed(0) + "%";
 
 const dayMs = 86400000;
 const iso = (d) => new Date(d).toISOString().slice(0,10);
-const addDays = (dstr, n) => iso(new Date(dstr).getTime() + n*dayMs);
 const nightsBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / dayMs);
 const today = () => iso(Date.now());
 
@@ -845,7 +1378,44 @@ function fmtRange(s, e){
 // option, which is what stops a number invented in a hotel lobby from quietly
 // becoming part of your 2026 spend.
 function tripStats(t){
-  const nights = Math.max(0, nightsBetween(t.start, t.end));
+  // --- a night belongs to exactly one trip ---------------------------------
+  // A week in Thasos booked inside six weeks in Bucharest used to be counted by
+  // both trips, which made "49 nights away" true of a 42-night window and left
+  // every per-night figure under-reporting against an inflated denominator.
+  // Overlapping days go to the SHORTER trip — that is where you actually were.
+  // The longer stay keeps its real dates everywhere it is displayed, and loses
+  // those nights only from its counts. No money moves: every line item stays on
+  // the trip it was logged against, so totals and breakdowns are untouched.
+  const spanNights = Math.max(0, nightsBetween(t.start, t.end));
+  const elsewhere = [];
+  for (const o of DATA.trips) {
+    if (o.id === t.id) continue;
+    const oSpan = Math.max(0, nightsBetween(o.start, o.end));
+    // A strict total order — length, then start date, then id — so exactly one
+    // trip of an overlapping pair gives way and the nights can neither be
+    // counted twice nor dropped by both.
+    const yields = oSpan < spanNights
+      || (oSpan === spanNights && (o.start > t.start
+          || (o.start === t.start && String(o.id) > String(t.id))));
+    if (!yields) continue;
+    const s = o.start > t.start ? o.start : t.start;   // clipped to this trip
+    const e = o.end   < t.end   ? o.end   : t.end;
+    if (nightsBetween(s, e) > 0) elsewhere.push({ id:o.id, name:o.name, start:s, end:e });
+  }
+  elsewhere.sort((a, b) => a.start.localeCompare(b.start));
+  // Merged before counting: two excursions could themselves overlap, and a
+  // night must not be subtracted twice.
+  const awaySpans = [];
+  for (const x of elsewhere) {
+    const last = awaySpans[awaySpans.length - 1];
+    if (last && x.start <= last.end) { if (x.end > last.end) last.end = x.end; }
+    else awaySpans.push({ start:x.start, end:x.end });
+  }
+  const awayNights = awaySpans.reduce((a, x) => a + nightsBetween(x.start, x.end), 0);
+  // This is the figure everything downstream counts: nights actually spent on
+  // THIS trip. The calendar span stays available as spanNights for the places
+  // that mean the duration of the stay rather than the nights it is credited.
+  const nights = Math.max(0, spanNights - awayNights);
 
   // --- display conversion ---------------------------------------------------
   // Everything downstream reads the figures this function returns, so doing the
@@ -884,7 +1454,7 @@ function tripStats(t){
   const projected = actual + planned;
   const personDays = nights * (t.travellers || 1);
   return {
-    ...t, nights, byCat, byCatEst, byCur,
+    ...t, nights, spanNights, awayNights, awaySpans, elsewhere, byCat, byCatEst, byCur,
     // budget is stored in base like everything else, so it converts too —
     // otherwise a EUR view would compare euros against a pound budget.
     budget: atBase ? t.budget : Math.round((t.budget / rate) * 100) / 100,
@@ -962,11 +1532,16 @@ const ICONS = {
           + 'A7.5 7.5 0 0 0 19.5 12z"/>',
 };
 const VIEWS = [ ["overview","Overview"], ["year","By year"], ["trip","Trips"] ];
-let state = { view:"overview", year:null, tripId:null, display:null }; // display:null = show in base
+let state = { view:"overview", year:null, tripId:null, display:null, tripFilter:"all", bd:"bars",
+              ovSpend:"purpose", ovShare:"grid" }; // display:null = show in base
 
 function renderNav(){
   const svg = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg>`;
+  // Same cog as the phone bottom bar's Settings tab, from the same ICONS entry
+  // rather than a second copy pasted into the markup — so the desktop icon and
+  // the phone icon can never drift apart.
+  document.getElementById("setMenuBtn").innerHTML = svg("more");
   document.getElementById("viewNav").innerHTML =
     VIEWS.map(([id,label]) =>
       `<button class="vtab ${state.view===id?"on":""}" data-v="${id}" aria-label="${label}">
@@ -975,7 +1550,10 @@ function renderNav(){
                aria-haspopup="menu">${svg("more")}Settings</button>`;
   // Only tabs carrying data-v route; the fourth one opens the sheet instead.
   document.querySelectorAll("#viewNav .vtab[data-v]").forEach(b =>
-    b.onclick = () => { state.view = b.dataset.v; render(); });
+    b.onclick = () => {
+      // Re-entering Trips lands on the index, not on whatever was last opened.
+      if (b.dataset.v === "trip") state.tripId = null;
+      state.view = b.dataset.v; render(); });
   document.getElementById("navMoreBtn").onclick = () =>
     document.getElementById("menuSheet").classList.add("open");
 
@@ -1022,15 +1600,31 @@ function render(){
   const empty = S.length === 0;
   document.getElementById("firstRun").style.display = empty ? "" : "none";
   document.getElementById("app").style.display      = empty ? "none" : "";
+  // The nav moved into <header>, which sits outside #app — so an empty store
+  // has to hide it explicitly or you get three tabs above the first-run panel.
+  document.getElementById("viewNav").style.display   = empty ? "none" : "";
   if (empty) return;
 
   const yrs = years();
   if (!yrs.includes(state.year)) state.year = yrs[yrs.length-1];
-  if (!S.find(t => t.id === state.tripId)) state.tripId = S[S.length-1].id;
+  // A null tripId is now meaningful: it means "show the index". Only clear a
+  // tripId that points at a trip which no longer exists.
+  if (state.tripId && !S.find(t => t.id === state.tripId)) state.tripId = null;
 
   // Nag about finished trips that still hold guesses, on every view. Without
   // this the simple estimate flag rots: you get home, forget the three lines
   // you invented in a hotel lobby, and they quietly become part of your history.
+  // Showing a cached store is fine; showing it without saying so is not — the
+  // figures would look live and a line added on the beach would appear to save.
+  const off = document.getElementById("offBar");
+  off.classList.toggle("show", servedFrom.cached);
+  if (servedFrom.cached) {
+    const when = servedFrom.at ? new Date(servedFrom.at) : null;
+    off.innerHTML = `<b>Offline</b> — showing the trips as they were${when
+      ? ` at ${when.toLocaleString("en-GB",{ weekday:"short", hour:"2-digit", minute:"2-digit" })}` : ""}.
+      Everything here still works; adding or changing a line needs the server.`;
+  }
+
   const stale = S.filter(t => t.stale);
   const bar = document.getElementById("staleBar");
   bar.classList.toggle("show", stale.length > 0);
@@ -1048,10 +1642,13 @@ function render(){
   renderNav();
   document.getElementById("overviewView").style.display = state.view==="overview" ? "" : "none";
   document.getElementById("yearView").style.display     = state.view==="year"     ? "" : "none";
-  document.getElementById("tripView").style.display     = state.view==="trip"     ? "" : "none";
+  const onTrip = state.view==="trip";
+  document.getElementById("tripsView").style.display    = onTrip && !state.tripId ? "" : "none";
+  document.getElementById("tripView").style.display     = onTrip &&  state.tripId ? "" : "none";
   if (state.view==="overview") renderOverview(S);
   if (state.view==="year")     renderYear(S);
-  if (state.view==="trip")     renderTrip(S);
+  if (onTrip && state.tripId)  renderTrip(S);
+  if (onTrip && !state.tripId) renderTripsList(S);
 
   document.getElementById("foot").innerHTML =
     `${S.reduce((a,t)=>a+t.items.length,0)} line items across ${S.length} trips. Every figure is derived
@@ -1061,6 +1658,126 @@ function render(){
 /* =============================================================
    SECTION 7 — OVERVIEW
 ============================================================= */
+// Inline SVG, like ICONS above — no icon font and no CDN, so the app still
+// renders with the internet down.
+const KICON = {
+  money:  '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/>',
+  moon:   '<path d="M20 14.6A8.5 8.5 0 1 1 9.4 4a6.7 6.7 0 0 0 10.6 10.6Z"/>',
+  person: '<circle cx="12" cy="8" r="3.4"/><path d="M5.6 20a6.4 6.4 0 0 1 12.8 0"/>',
+  trend:  '<path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r=".9" fill="currentColor"/>',
+  pie:    '<path d="M21 12A9 9 0 1 1 12 3v9Z"/><path d="M12 3a9 9 0 0 1 9 9h-9Z"/>',
+  bars:   '<path d="M4 6h16M4 12h11M4 18h7"/>',
+  ring:   '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>',
+  // card titles
+  receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  scale:  '<path d="M12 3v18M5 7h14M8 21h8"/><path d="M5 7l-3 6h6z"/><path d="M19 7l-3 6h6z"/>',
+  chart:  '<path d="M2 20h20"/><path d="M5 20V10M11 20V4M17 20v-7"/>',
+  percent:'<path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  scatter:'<path d="M3 3v18h18"/><circle cx="8" cy="15" r="1.6"/><circle cx="12" cy="8" r="1.6"/><circle cx="17" cy="12" r="1.6"/>',
+  calc:   '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/>',
+  coins:  '<circle cx="9" cy="9" r="5.5"/><path d="M14.4 8.2a5.5 5.5 0 1 1-6.2 6.2"/>',
+  // appearance
+  sun:    '<circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22'
+        + 'M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/>',
+  // Half light, half dark: the system is choosing, not you.
+  auto:   '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>',
+  // overview chart-mode toggles
+  tag:    '<path d="M20 12l-8 8-9-9V4h7z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/>',
+  stack:  '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16"/>',
+  grid:   '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+  tiles:  '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+        + '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+};
+const kicon = (d, cls = "kico") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+
+// ---- category breakdown, shared by the trip page and the year page ----
+// Bars by default, donut on request; one toggle state (state.bd) for both, on
+// the theory that a preference for bars is a preference, not a per-page whim.
+// rows: [{ cat, act, est }] — the bar's solid segment is actual, the faded tail
+// is estimated, so a guess is never drawn as if it were paid.
+function bdBarsHTML(rows, denom){
+  const d = denom || 1;
+  return rows.map(({cat, act, est}) => {
+    const col = catColor(cat.id);
+    return `<div class="brow">
+        <i class="catico" style="background:${tint(col, .16)}">${cat.icon}</i>
+        <span class="bl">${cat.label}</span>
+        <span class="ba">${act ? money(act + est) : ""}${
+          est ? `<span class="est">${act ? money(est) + " est" : money(est) + " est, nothing paid"}</span>` : ""}${
+          denom ? `<span class="pc">${((act + est) / d * 100).toFixed(0)}%</span>` : ""}</span>
+        <span class="bar"><i style="width:${(act/d*100).toFixed(2)}%;background:${col}"></i><i
+          style="width:${(est/d*100).toFixed(2)}%;background:${col};opacity:.35"></i></span>
+      </div>`;
+  }).join("") || `<div class="empty">Nothing to break down yet.</div>`;
+}
+function wireBdToggle(titleId, toggleId, barsId, donutId, title){
+  document.getElementById(titleId).innerHTML = kicon(KICON.pie, "h2ico") + title;
+  document.getElementById(toggleId).querySelectorAll("button").forEach(b => {
+    b.innerHTML = kicon(b.dataset.bd === "bars" ? KICON.bars : KICON.ring, "tgico");
+    b.classList.toggle("on", b.dataset.bd === state.bd);
+    b.onclick = () => { state.bd = b.dataset.bd; render(); };
+  });
+  document.getElementById(barsId).style.display  = state.bd === "bars"  ? "" : "none";
+  document.getElementById(donutId).style.display = state.bd === "donut" ? "" : "none";
+}
+
+// ---- overview chart modes ----
+// [key, toggle icon, subtitle]. The toggles share .bdtoggle's chrome with the
+// breakdown switch; only the number of buttons differs. Functions, not
+// constants: PIN is declared further down and a top-level array would read
+// it before initialisation.
+const OV_SPEND_MODES = () => [
+  ["cat",     KICON.chart, "by category"],
+  ["purpose", KICON.tag,   "by purpose"],
+  ["trip",    PIN,         "by trip"],
+  ["lines",   KICON.trend, "category lines"],
+];
+const OV_SHARE_MODES = () => [
+  ["stack", KICON.stack, "% of spend, stacked"],
+  ["grid",  KICON.grid,  "% of spend"],
+  ["lines", KICON.trend, "% of spend"],
+  ["tiles", KICON.tiles, "% of spend"],
+];
+function wireModeToggle(toggleId, stateKey, modes){
+  document.getElementById(toggleId).querySelectorAll("button").forEach(b => {
+    const m = modes.find(x => x[0] === b.dataset.m);
+    b.innerHTML = kicon(m[1], "tgico");
+    b.classList.toggle("on", b.dataset.m === state[stateKey]);
+    b.onclick = () => { state[stateKey] = b.dataset.m; render(); };
+  });
+  return modes.find(x => x[0] === state[stateKey]) || modes[0];
+}
+// Names beside the value-map bubbles. Chart.js ships no label plugin and the
+// app vendors nothing extra, so this is the whole thing: draw to the right,
+// flip left near the edge, step down while sitting on a label already placed.
+const bubbleLabels = { id:"bubbleLabels", afterDatasetsDraw(ch){
+  // Nine names need room. Below roughly a phone's plot width they collide and
+  // clip into each other, so the chart drops back to bare bubbles and lets a
+  // tap name them through the tooltip.
+  if (ch.chartArea.right - ch.chartArea.left < 360) return;
+  const meta = ch.getDatasetMeta(0), data = ch.data.datasets[0].data;
+  const ctx = ch.ctx, h = 13;
+  const rad = (pt) => (pt.options && pt.options.radius) || 4;
+  // The bubbles themselves are obstacles too, so a label never sits on a
+  // neighbouring trip's circle.
+  const placed = meta.data.map(pt => ({ x:pt.x - rad(pt), y:pt.y, w:2*rad(pt), h:2*rad(pt) }));
+  const hits = (x, y, w) => placed.some(p => Math.abs(p.y - y) < (p.h || h) / 2 + h / 2 && x < p.x + p.w && x + w > p.x);
+  ctx.save();
+  ctx.font = "11px " + getComputedStyle(document.body).fontFamily;
+  ctx.fillStyle = c("--muted"); ctx.textBaseline = "middle";
+  meta.data.forEach((pt, i) => {
+    const r = rad(pt), w = ctx.measureText(data[i].label).width;
+    let x = pt.x + r + 5, y = pt.y;
+    if (x + w > ch.chartArea.right) x = pt.x - r - 5 - w;
+    for (let k = 0; k < 6 && hits(x, y, w); k++) y += h;
+    placed.push({ x, y, w, h });
+    ctx.fillText(data[i].label, x, y);
+  });
+  ctx.restore();
+}};
+
 function renderOverview(S){
   const past = S.filter(t => !t.future);
   const lifetime   = past.reduce((a,t) => a + t.actual, 0);
@@ -1071,35 +1788,113 @@ function renderOverview(S){
   const committed  = fut.reduce((a,t) => a + t.actual, 0);
 
   const yrs = years();
+  const byYear   = (y) => S.filter(t => t.year===y);
   const totalFor = (y) => S.filter(t => t.year===y && !t.future).reduce((a,t)=>a+t.actual,0);
-  const yA = yrs[yrs.length-1], yB = yrs[yrs.length-2];
+  // Compare the two most recent years that actually HAVE spend. Taking the last
+  // two entries of years() blindly compared a year whose trips are all still in
+  // the future against a complete one, and rendered "-100% year on year" in
+  // green — a year that has not happened yet reading as a triumphant saving.
+  const spentYrs = yrs.filter(y => totalFor(y) > 0);
+  const yA = spentYrs.length ? spentYrs[spentYrs.length-1] : yrs[yrs.length-1];
+  const yB = spentYrs[spentYrs.length-2];
   const thisYear = totalFor(yA), prevYear = yB ? totalFor(yB) : 0;
   const yoy = prevYear ? (thisYear - prevYear)/prevYear*100 : 0;
+  const nowY = new Date().getFullYear();
+  // The chart axes: only years with money on them. A year that exists solely
+  // because a trip is booked into it drew an empty column on every chart.
+  // Committed money counts (it is real), so a booked-and-paid year stays.
+  const axYrs = yrs.filter(y => byYear(y).reduce((a,t)=>a+t.actual,0) > 0);
+  const ax = axYrs.length ? axYrs : yrs;
+  const axLabels = ax.map(String);
+  const usedCats = CATS.filter(cat => S.some(t => t.byCat[cat.id]));
 
+  // Labels are kept SHORT on purpose: "Lifetime holiday spend" wrapped to two
+  // lines and left the four cards at ragged heights. The small icon is what
+  // .kpi .l was always built for — it has been display:flex with a gap since
+  // the beginning and nothing ever sat in it.
+  // The delta only takes a colour past ±1%: "+0%" in red read as a warning
+  // about nothing. "so far" marks the year still in progress — nine months
+  // against a finished year is not a like-for-like comparison.
   document.getElementById("ovKpis").innerHTML = [
-    ["Lifetime holiday spend", money(lifetime), `${past.length} trips since ${yrs[0]}`, ""],
-    ["Nights away", nights, `${countries} countries · ${past.length?(nights/past.length).toFixed(1):0} nights avg`, ""],
-    ["Cost per person / day", personDays ? money(lifetime/personDays) : "—", "all trips, all years", ""],
+    ["Lifetime spend", money(lifetime), `${past.length} trips since ${yrs[0]}`, "", KICON.money],
+    ["Nights away", nights, `${countries} countries · ${past.length?(nights/past.length).toFixed(1):0} nights avg`, "", KICON.moon],
+    ["Per person / day", personDays ? money(lifetime/personDays) : "—", "all trips, all years", "", KICON.person],
     [ yB ? `${yA} vs ${yB}` : `${yA}`, money(thisYear),
-      yB ? pct(yoy)+" year on year" : "first year on record", yB ? (yoy>0?"up":"down") : "" ],
-  ].map(([l,v,d,cls]) =>
-    `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>
+      yB ? pct(yoy) + " year on year" + (yA === nowY ? ` · ${yA} so far` : "") : "first year on record",
+      yB && Math.abs(yoy) >= 1 ? (yoy>0?"up":"down") : "", KICON.trend ],
+  ].map(([l,v,d,cls,ic]) =>
+    `<div class="kpi"><div class="l">${ic ? kicon(ic) : ""}${l}</div><div class="v">${v}</div>
      <div class="kdelta ${cls}">${d}</div></div>`).join("");
 
-  // ---- stacked spend by year ----
-  mk("chYears", { type:"bar", data:{ labels:yrs.map(String), datasets: CATS.map(cat => ({
-      label: cat.label,
-      data: yrs.map(y => S.filter(t => t.year===y).reduce((a,t)=>a+(t.byCat[cat.id]||0),0)),
-      backgroundColor: catColor(cat.id), borderWidth:0 })) },
-    options: baseOpts({
-      plugins:{ legend:{display:false}, tooltip:{ callbacks:{
-        label:(x)=>`${x.dataset.label}: ${money(x.raw)}`,
-        footer:(xs)=>"Total: " + money(xs.reduce((a,x)=>a+x.raw,0)) } } },
-      scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
-               y:Object.assign(gridOpts(),{stacked:true,
-                 ticks:{ color:c("--muted"), font:{size:11},
-                   callback:(v)=> v>=1000 ? baseSym()+(v/1000)+"k" : baseSym()+v }}) } })});
-  legendInto("legYears", CATS.map(cat => ({ label:cat.label, color:catColor(cat.id) })));
+  // ---- spend by year, four ways ----
+  const spendMode = wireModeToggle("ovSpendToggle", "ovSpend", OV_SPEND_MODES());
+  document.getElementById("ovSpendSub").textContent = "· " + spendMode[2];
+  const kTicks = () => ({ color:c("--muted"), font:{size:11},
+    callback:(v)=> v>=1000 ? baseSym()+(v/1000)+"k" : baseSym()+v });
+  const stackedScales = () => ({ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
+                                 y:Object.assign(gridOpts(),{stacked:true, ticks:kTicks()}) });
+  const sumFooter = (xs) => "Total: " + money(xs.reduce((a,x)=>a+x.raw,0));
+  const purps = [...new Set(S.map(t => t.purpose))];
+  const purpLegend = purps.map(p => ({ label:`${purposeIcon(p)} ${esc(p)}`, color:purposeColor(p) }));
+  // Top five categories by lifetime spend carry their own line; the rest fold
+  // into "Other" — eleven lines on one chart is spaghetti.
+  const catTotal = (cat) => S.reduce((a,t)=>a+(t.byCat[cat.id]||0),0);
+  const ranked = usedCats.slice().sort((a,b) => catTotal(b) - catTotal(a));
+  const top5 = ranked.slice(0,5), restIds = ranked.slice(5).map(x => x.id);
+  const lineSets = (val) => [
+    ...top5.map(cat => ({ label:cat.label, data:ax.map(y => val(y, [cat.id])), borderColor:catColor(cat.id),
+        backgroundColor:catColor(cat.id), pointRadius:3.5, tension:.3, borderWidth:2 })),
+    ...(restIds.length ? [{ label:"Other", data:ax.map(y => val(y, restIds)), borderColor:c("--misc"),
+        backgroundColor:c("--misc"), pointRadius:3.5, tension:.3, borderWidth:2, borderDash:[4,3] }] : []) ];
+  const lineLegend = [ ...top5.map(cat => ({ label:cat.label, color:catColor(cat.id) })),
+                       ...(restIds.length ? [{ label:"Other", color:c("--misc") }] : []) ];
+  const lineOpts = (fmt) => baseOpts({ plugins:{ legend:{display:false}, tooltip:{ mode:"index", intersect:false,
+      callbacks:{ label:(x)=>`${x.dataset.label}: ${fmt(x.raw)}` } } },
+    scales:{ x:Object.assign(gridOpts(),{grid:{display:false}}),
+             y:Object.assign(gridOpts(),{ min:0, ticks:kTicks() }) } });
+
+  if (spendMode[0] === "cat") {
+    mk("chYears", { type:"bar", data:{ labels:axLabels, datasets: usedCats.map(cat => ({
+        label: cat.label, data: ax.map(y => byYear(y).reduce((a,t)=>a+(t.byCat[cat.id]||0),0)),
+        backgroundColor: catColor(cat.id), borderWidth:0 })) },
+      options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+          label:(x)=>`${x.dataset.label}: ${money(x.raw)}`, footer:sumFooter } } }, scales:stackedScales() })});
+    legendInto("legYears", usedCats.map(cat => ({ label:cat.label, color:catColor(cat.id) })));
+  } else if (spendMode[0] === "purpose") {
+    mk("chYears", { type:"bar", data:{ labels:axLabels, datasets: purps.map(p => ({
+        label: p, data: ax.map(y => byYear(y).filter(t => t.purpose===p).reduce((a,t)=>a+t.actual,0)),
+        backgroundColor: purposeColor(p), borderWidth:0 })) },
+      options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+          label:(x)=>{ const tot = byYear(ax[x.dataIndex]).reduce((a,t)=>a+t.actual,0);
+            return `${purposeIcon(x.dataset.label)} ${x.dataset.label}: ${money(x.raw)}${tot ? ` · ${(x.raw/tot*100).toFixed(0)}%` : ""}`; },
+          footer:sumFooter } } }, scales:stackedScales() })});
+    legendInto("legYears", purpLegend);
+  } else if (spendMode[0] === "trip") {
+    // One dataset per "slot": the i-th biggest trip of each year. Blocks are
+    // tinted by purpose with a hairline of card colour between them; the
+    // tooltip names the trip.
+    const sorted = ax.map(y => byYear(y).slice().sort((a,b) => b.actual - a.actual));
+    const slots = Math.max(0, ...sorted.map(ts => ts.length));
+    mk("chYears", { type:"bar", data:{ labels:axLabels, datasets: [...Array(slots).keys()].map(i => {
+        const s = sorted.map(ts => ts[i] || null);
+        return { label:"trip"+i, data:s.map(t => t ? t.actual : 0), trips:s,
+          backgroundColor:s.map(t => t ? purposeColor(t.purpose) : "transparent"),
+          // The block's own bottom edge is drawn over the block beneath, so two
+          // same-purpose trips in one year still read as two.
+          borderColor:c("--surface"), borderWidth:{bottom: i ? 2 : 0}, borderSkipped:false }; }) },
+      options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+          title:(xs)=>{ const t = xs[0].dataset.trips[xs[0].dataIndex];
+            return t ? `${purposeIcon(t.purpose)} ${t.name}${t.country ? ", "+t.country : ""}${t.future ? " · upcoming" : ""}` : ""; },
+          label:(x)=>{ const t = x.dataset.trips[x.dataIndex];
+            return t ? `${money(t.actual)} · ${t.nights} nights${t.rating ? " · "+t.rating+"★" : ""}` : ""; } } } },
+        scales:stackedScales() })});
+    legendInto("legYears", purpLegend);
+  } else {
+    mk("chYears", { type:"line", data:{ labels:axLabels,
+        datasets: lineSets((y, ids) => byYear(y).reduce((a,t) => a + ids.reduce((b,id) => b + (t.byCat[id]||0), 0), 0)) },
+      options: lineOpts(money) });
+    legendInto("legYears", lineLegend);
+  }
 
   const gapYears = [...Array(yrs[yrs.length-1]-yrs[0]+1).keys()]
       .map(i => yrs[0]+i).filter(y => !yrs.includes(y));
@@ -1112,9 +1907,9 @@ function renderOverview(S){
     + (gapYears.length ? `No trips recorded in ${gapYears.join(", ")}.` : "");
 
   // ---- cost per person per day trend ----
-  mk("chCpppd", { type:"line", data:{ labels:yrs.map(String), datasets:[{
-      data: yrs.map(y => {
-        const ts = S.filter(t => t.year===y && !t.future);
+  mk("chCpppd", { type:"line", data:{ labels:axLabels, datasets:[{
+      data: ax.map(y => {
+        const ts = byYear(y).filter(t => !t.future);
         const tot = ts.reduce((a,t)=>a+t.actual,0), pd = ts.reduce((a,t)=>a+t.personDays,0);
         return pd ? tot/pd : null; }),
       borderColor:c("--accent"), backgroundColor:"rgba(47,111,98,.10)", fill:true, tension:.3,
@@ -1124,25 +1919,83 @@ function renderOverview(S){
       scales:{ x:Object.assign(gridOpts(),{grid:{display:false}}),
                y:Object.assign(gridOpts(),{ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v}}) } })});
 
-  // ---- category share over time (100% stacked) ----
-  mk("chShare", { type:"bar", data:{ labels:yrs.map(String), datasets: CATS.map(cat => ({
-      label: cat.label,
-      data: yrs.map(y => {
-        const ts = S.filter(t => t.year===y);
-        const tot = ts.reduce((a,t)=>a+t.actual,0);
-        return tot ? ts.reduce((a,t)=>a+(t.byCat[cat.id]||0),0)/tot*100 : 0; }),
-      backgroundColor: catColor(cat.id), borderWidth:0 })) },
-    options: baseOpts({
+  // ---- where it went, all years ----
+  const lifeRows = ranked.map(cat => ({ cat, act: catTotal(cat), est: 0 }));
+  const lifeTot  = lifeRows.reduce((a,r) => a + r.act, 0);
+  wireBdToggle("ovBdTitle", "ovBdToggle", "ovBdBars", "ovBdDonut",
+    `Where it went <span class="sub">· ${ax.length > 1 ? `${ax[0]}–${ax[ax.length-1]}` : ax[0] || ""}</span>`);
+  document.getElementById("ovBdBars").innerHTML = bdBarsHTML(lifeRows, lifeTot);
+  mk("chOvCats", { type:"doughnut",
+    data:{ labels:lifeRows.map(r=>r.cat.label), datasets:[{ data:lifeRows.map(r=>r.act),
+      backgroundColor:lifeRows.map(r=>catColor(r.cat.id)), borderWidth:2, borderColor:c("--surface") }]},
+    options:{ responsive:true, maintainAspectRatio:false, cutout:"58%",
       plugins:{ legend:{display:false}, tooltip:{ callbacks:{
-        label:(x)=>`${x.dataset.label}: ${x.raw.toFixed(1)}%` } } },
-      scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
-               y:Object.assign(gridOpts(),{stacked:true,max:100,
-                 ticks:{color:c("--muted"),font:{size:11},callback:(v)=>v+"%"}}) } })});
-  const shareOf = (y,cid) => { const ts=S.filter(t=>t.year===y); const tot=ts.reduce((a,t)=>a+t.actual,0);
-    return tot ? ts.reduce((a,t)=>a+(t.byCat[cid]||0),0)/tot*100 : 0; };
-  document.getElementById("capShare").textContent = yrs.length > 1
-    ? `Flights were ${shareOf(yrs[0],"flights").toFixed(0)}% of spend in ${yrs[0]} and ${shareOf(yrs[yrs.length-1],"flights").toFixed(0)}% in ${yrs[yrs.length-1]}.`
-    : "A second year of data will make this chart worth reading.";
+        label:(x)=>`${x.label}: ${money(x.raw)} (${lifeTot?(x.raw/lifeTot*100).toFixed(0):0}%)` }}} }});
+  legendInto("legOvCats", lifeRows.map(r => ({ label:r.cat.label, color:catColor(r.cat.id),
+    extra:`<span class="mono muted">${money(r.act)}</span>` })));
+  document.getElementById("ovBdCap").textContent = lifeRows.length >= 2
+    ? `${money(lifeTot)} across ${past.length} trips${committed ? `, including ${money(committed)} committed to upcoming ones` : ""}. ${
+        lifeRows[0].cat.label} and ${lifeRows[1].cat.label} are ${
+        ((lifeRows[0].act + lifeRows[1].act) / lifeTot * 100).toFixed(0)}% of everything.`
+    : "";
+
+  // ---- category share over time, four ways ----
+  const shareMode = wireModeToggle("ovShareToggle", "ovShare", OV_SHARE_MODES());
+  document.getElementById("ovShareSub").textContent = "· " + shareMode[2];
+  const shareOf = (y, ids) => { const ts = byYear(y); const tot = ts.reduce((a,t)=>a+t.actual,0);
+    return tot ? ts.reduce((a,t) => a + ids.reduce((b,id) => b + (t.byCat[id]||0), 0), 0) / tot * 100 : 0; };
+  document.getElementById("ovShareChart").style.display = (shareMode[0]==="stack" || shareMode[0]==="lines") ? "" : "none";
+  document.getElementById("ovShareGrid").style.display  = shareMode[0]==="grid"  ? "" : "none";
+  document.getElementById("ovShareTiles").style.display = shareMode[0]==="tiles" ? "" : "none";
+  if (shareMode[0] === "stack") {
+    mk("chShare", { type:"bar", data:{ labels:axLabels, datasets: usedCats.map(cat => ({
+        label: cat.label, data: ax.map(y => shareOf(y, [cat.id])), backgroundColor: catColor(cat.id), borderWidth:0 })) },
+      options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
+          label:(x)=>`${x.dataset.label}: ${x.raw.toFixed(1)}%` } } },
+        scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
+                 y:Object.assign(gridOpts(),{stacked:true,max:100,
+                   ticks:{color:c("--muted"),font:{size:11},callback:(v)=>v+"%"}}) } })});
+    legendInto("legShare", usedCats.map(cat => ({ label:cat.label, color:catColor(cat.id) })));
+  } else if (shareMode[0] === "lines") {
+    const o = lineOpts((v) => v.toFixed(1) + "%");
+    o.scales.y.ticks = { color:c("--muted"), font:{size:11}, callback:(v)=>v+"%" };
+    mk("chShare", { type:"line", data:{ labels:axLabels, datasets: lineSets(shareOf) }, options:o });
+    legendInto("legShare", lineLegend);
+  } else if (shareMode[0] === "grid") {
+    // Rows are categories (biggest lifetime first), columns years. Tint depth
+    // is the share against the largest cell on the grid; the outlined cell is
+    // that category's biggest year. Nothing here is a chart, so it grows a
+    // column a year without ever getting harder to read.
+    const cells = ranked.map(cat => ({ cat, vals: ax.map(y => shareOf(y, [cat.id])) }));
+    const maxShare = Math.max(1, ...cells.flatMap(r => r.vals));
+    document.getElementById("ovShareGrid").innerHTML = `<table class="heat"><thead><tr><th>Category</th>${
+        axLabels.map(y => `<th>${y}</th>`).join("")}</tr></thead><tbody>${
+      cells.map(({cat, vals}) => { const col = catColor(cat.id), best = Math.max(...vals), many = vals.filter(v => v >= .5).length > 1;
+        return `<tr><td class="lab"><i class="catico" style="background:${tint(col,.16)}">${cat.icon}</i>${cat.label}</td>${
+          vals.map((v, i) => v < .5 ? `<td class="hc"><div class="cell z">–</div></td>`
+            : `<td class="hc"><div class="cell${v===best && many ? " top" : ""}" style="background:${tint(col, .10 + .75*(v/maxShare))};color:${
+                v/maxShare > .55 ? "#fff" : col}" title="${cat.label} ${ax[i]}: ${v.toFixed(1)}%">${v.toFixed(0)}%</div></td>`).join("")}</tr>`;
+      }).join("")}</tbody></table>`;
+  } else {
+    // One sparkline per category, each on its own zero, so no line is bent by
+    // the neighbour stacked under it.
+    const W = 200, H = 40;
+    document.getElementById("ovShareTiles").innerHTML = ranked.slice(0, 8).map(cat => {
+      const col = catColor(cat.id), vals = ax.map(y => shareOf(y, [cat.id])), mx = Math.max(1, ...vals);
+      const pts = vals.map((v, i) => [ ax.length > 1 ? i/(ax.length-1)*W : W/2, H - (v/mx)*(H-6) - 3 ]);
+      const path = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+      const d = vals[vals.length-1] - vals[0], cls = Math.abs(d) < 1 ? "" : d > 0 ? "up" : "down";
+      return `<div class="smc"><div class="t"><i class="catico" style="background:${tint(col,.16)}">${cat.icon}</i><span class="nm">${cat.label}</span><span class="now">${vals[vals.length-1].toFixed(0)}%</span></div>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${path} L${W} ${H} L0 ${H} Z" fill="${tint(col,.14)}"/><path d="${path}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${pts[pts.length-1][0]}" cy="${pts[pts.length-1][1]}" r="3.2" fill="${col}"/></svg>
+        <div class="yrs"><span>${ax[0]}</span><span>${ax.length > 1 ? ax[ax.length-1] : ""}</span></div>
+        <div class="d ${cls}">${ax.length < 2 ? "one year so far" : !cls ? "steady" : (d > 0 ? "+" : "−") + Math.abs(d).toFixed(0) + " pts since ’" + String(ax[0]).slice(2)}</div></div>`;
+    }).join("");
+  }
+  // First and last year WITH spend — not the last year on the calendar, which
+  // once read "0% in 2027" about a trip that had not happened yet.
+  document.getElementById("capShare").textContent = ax.length > 1
+    ? `Flights were ${shareOf(ax[0],["flights"]).toFixed(0)}% of spend in ${ax[0]} and ${shareOf(ax[ax.length-1],["flights"]).toFixed(0)}% in ${ax[ax.length-1]}.`
+    : "A second year of data will make this card worth reading.";
 
   // ---- destinations table ----
   const byDest = {};
@@ -1162,29 +2015,31 @@ function renderOverview(S){
          <td data-l="Per person / day" style="color:${r.cpppd>median?c("--warn"):c("--good")}">${money(r.cpppd)}</td></tr>`).join("")}
        </tbody></table>`
     : `<div class="empty">No completed trips yet.</div>`;
+  // The two facts the old lifetime strip had that the KPIs did not.
+  const rated   = past.filter(t => t.rating);
+  const best    = rated.slice().sort((a,b)=> (b.rating/(b.cpppd||1)) - (a.rating/(a.cpppd||1)))[0];
+  const dearest = past.slice().sort((a,b)=>b.actual-a.actual)[0];
+  document.getElementById("destCap").innerHTML = dearest
+    ? `<b>Priciest trip</b> ${esc(dearest.name)} ${dearest.year} · ${money(dearest.actual)}` +
+      (best ? ` &nbsp;·&nbsp; <b>Best value</b> ${esc(best.name)} ${best.year} · ${money(best.cpppd)}/pp/day` : " &nbsp;·&nbsp; Rate a trip to see your best value.")
+    : "";
 
   // ---- value map ----
-  const rated = past.filter(t => t.rating);
   mk("chValue", { type:"bubble", data:{ datasets:[{
-      data: rated.map(t => ({ x:t.cpppd, y:t.rating, r:Math.max(4, Math.sqrt(t.actual)/7), name:t.name, total:t.actual })),
-      backgroundColor:"rgba(47,111,98,.35)", borderColor:c("--accent"), borderWidth:1 }]},
+      // Same destination twice (Bucharest every summer) gets its year in the label.
+      data: rated.map(t => ({ x:t.cpppd, y:t.rating, r:Math.max(4, Math.sqrt(t.actual)/7), name:t.name, total:t.actual, purpose:t.purpose,
+        label: rated.filter(o => o.name === t.name).length > 1 ? `${t.name} ’${String(t.year).slice(2)}` : t.name })),
+      backgroundColor: rated.map(t => tint(purposeColor(t.purpose), .45)),
+      borderColor: rated.map(t => purposeColor(t.purpose)), borderWidth:1.5 }]},
+    plugins:[bubbleLabels],
     options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
-        label:(x)=>`${x.raw.name}: ${money(x.raw.x)}/pp/day · rated ${x.raw.y}/5 · ${money(x.raw.total)} total` }}},
+        label:(x)=>`${purposeIcon(x.raw.purpose)} ${x.raw.name}: ${money(x.raw.x)}/pp/day · rated ${x.raw.y}/5 · ${money(x.raw.total)} total` }}},
       scales:{ x:Object.assign(gridOpts(),{ title:{display:true,text:"per person per day",color:c("--muted"),font:{size:11}},
                  ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v} }),
                y:Object.assign(gridOpts(),{ min:0.5, max:5.5,
-                 ticks:{color:c("--muted"),font:{size:11},stepSize:1,callback:(v)=> Number.isInteger(v)? v+"★" : ""} }) } })});
-
-  // ---- lifetime strip ----
-  const best    = rated.slice().sort((a,b)=> (b.rating/(b.cpppd||1)) - (a.rating/(a.cpppd||1)))[0];
-  const dearest = past.slice().sort((a,b)=>b.actual-a.actual)[0];
-  document.getElementById("lifetime").innerHTML = [
-    ["Total spent", money(lifetime)],
-    ["Trips", past.length],
-    ["Nights away", nights],
-    ["Priciest trip", dearest ? `${esc(dearest.name)} · ${money(dearest.actual)}` : "—"],
-    ["Best value", best ? `${esc(best.name)} · ${money(best.cpppd)}/pp/day` : "rate a trip"],
-  ].map(([l,v]) => `<div><div class="ll">${l}</div><div class="lv">${v}</div></div>`).join("");
+                 // Half-star padding puts the auto ticks on x.5; pin them to the stars.
+                 afterBuildTicks:(ax)=>{ ax.ticks = [1,2,3,4,5].map(v => ({ value:v })); },
+                 ticks:{color:c("--muted"),font:{size:11},callback:(v)=> v+"★"} }) } })});
 
   renderEstimator(past);
 }
@@ -1257,17 +2112,18 @@ function renderYear(S){
 
   document.getElementById("yrKpis").innerHTML = [
     ["Total spend", money(total), prev ? pct((total-prev)/prev*100)+" vs "+(y-1) : "no prior year",
-      prev ? (total>prev ? "up":"down") : ""],
-    ["Trips", ts.length, `${nights} nights away` + (future.length?` · ${future.length} still to come`:""), ""],
+      prev ? (total>prev ? "up":"down") : "", KICON.money],
+    // Same glyph as the Trips tab in the nav — it is the same concept.
+    ["Trips", ts.length, `${nights} nights away` + (future.length?` · ${future.length} still to come`:""), "", ICONS.trip],
     ["Cost per person / day", pd ? money(takenTotal/pd) : "—",
-      future.length ? "trips taken only" : "across the year", ""],
+      future.length ? "trips taken only" : "across the year", "", KICON.person],
     ["Budget variance", budget ? pct((total-budget)/budget*100) : "—",
-      `${money(total)} spent vs ${money(budget)} planned`, total>budget?"up":"down"],
-  ].map(([l,v,d,cls]) =>
-    `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>
+      `${money(total)} spent vs ${money(budget)} planned`, total>budget?"up":"down", KICON.target],
+  ].map(([l,v,d,cls,ic]) =>
+    `<div class="kpi"><div class="l">${ic ? kicon(ic) : ""}${l}</div><div class="v">${v}</div>
      <div class="kdelta ${cls}">${d}</div></div>`).join("");
 
-  document.getElementById("yrBvaTitle").innerHTML =
+  document.getElementById("yrBvaTitle").innerHTML = kicon(KICON.scale, "h2ico") +
     `Budget vs actual <span class="sub">· ${y} · click a trip to open its ledger</span>`;
   document.getElementById("yrTrips").innerHTML =
     `<table class="reflow"><thead><tr><th>Trip</th><th>Dates</th><th>Nights</th><th>Budget</th><th>Actual</th>
@@ -1280,9 +2136,12 @@ function renderYear(S){
       const over = t.budget && t.actual > t.budget;
       const w = Math.min(100, t.budget ? t.actual/t.budget*100 : 0);
       return `<tr class="click" data-t="${t.id}">
-        <td>${esc(t.name)} <span class="pill${t.future?" future":""}">${t.future?"booked":esc(t.purpose)}</span></td>
-        <td data-l="Dates">${t.start.slice(5)} → ${t.end.slice(5)}</td>
-        <td data-l="Nights">${t.nights}</td>
+        <td>${esc(t.name)} <span class="pill purp" style="background:${tint(purposeColor(t.purpose), .14)};color:${
+          purposeColor(t.purpose)};border-color:${tint(purposeColor(t.purpose), .35)}">${
+          purposeIcon(t.purpose)} ${esc(t.purpose)}</span>${t.future ? ' <span class="pill future">upcoming</span>' : ""}</td>
+        <td data-l="Dates">${dateRange(t.start, t.end)}</td>
+        <td data-l="Nights"${t.awayNights ? ` title="${t.awayNights} of the ${t.spanNights} nights were spent in ${
+          [...new Set(t.elsewhere.map(x => x.name))].join(", ")}"` : ""}>${t.nights}</td>
         <td data-l="Budget" class="muted">${t.budget?money(t.budget):"—"}</td>
         <td data-l="Spent" style="color:${over?c("--warn"):c("--good")}">${money(t.actual)}</td>
         <td data-l="Burn" class="barcell"><div class="bar"><i class="${over?"over":""}" style="width:${w}%"></i></div></td>
@@ -1292,6 +2151,11 @@ function renderYear(S){
     tr.onclick = () => { state.tripId = tr.dataset.t; state.view = "trip"; render(); });
 
   const totals = CATS.map(cat => ts.reduce((a,t)=>a+(t.byCat[cat.id]||0),0));
+  // ACTUAL only, like everything else on this page — so no estimated tail here.
+  wireBdToggle("yrBdTitle", "yrBdToggle", "yrBdBars", "yrBdDonut", "Where it went");
+  document.getElementById("yrBdBars").innerHTML = bdBarsHTML(
+    CATS.map((cat, i) => ({ cat, act: totals[i], est: 0 })).filter(r => r.act > 0)
+        .sort((a, b) => b.act - a.act), total);
   mk("chYrCats", { type:"doughnut",
     data:{ labels:CATS.map(x=>x.label), datasets:[{ data:totals,
       backgroundColor:CATS.map(x=>catColor(x.id)), borderWidth:2, borderColor:c("--surface") }]},
@@ -1301,52 +2165,278 @@ function renderYear(S){
   legendInto("legYrCats", CATS.map((cat,i) => ({ label:cat.label, color:catColor(cat.id),
     extra:`<span class="mono muted">${money(totals[i])}</span>` })).filter((_,i)=>totals[i]>0));
 
-  // prepaid vs on-the-ground, bucketed by the month the money actually left
-  const months = Array.from({length:12}, (_,i) => `${y}-${String(i+1).padStart(2,"0")}`);
-  // t.real, not t.items: this chart is about money that has actually left the
-  // account in a given month, and a guess has not left anything.
-  // t.conv, not it.amountBase: per-line loops sit outside tripStats and so miss
-  // both guards it applies — the estimate filter (t.real) and the display
+  // ---- trip timeline ----
+  // Day-of-year arithmetic, all of it through nightsBetween so it agrees with
+  // every other date in the app (ISO strings parse as UTC; local midnight would
+  // put a 1 Jan trip in the previous year for anyone west of Greenwich).
+  const yStart = `${y}-01-01`;
+  const yDays  = nightsBetween(yStart, `${y+1}-01-01`);
+  const doy    = (d) => nightsBetween(yStart, d);
+  const clamp  = (d) => Math.min(Math.max(d, 0), yDays);
+  const atPct  = (d) => (clamp(d) / yDays * 100).toFixed(2) + "%";
+  const tl = ts.slice().sort((a,b) => a.start < b.start ? -1 : 1);
+  document.getElementById("yrTimeline").innerHTML =
+    `<div class="tl-months">${MON.map((m,i) =>
+        `<span style="left:${atPct(doy(`${y}-${String(i+1).padStart(2,"0")}-01`))}">${m}</span>`).join("")}</div>
+     <div class="tl-body">${MON.map((_,i) =>
+        `<i class="tl-gl" style="left:${atPct(doy(`${y}-${String(i+1).padStart(2,"0")}-01`))}"></i>`).join("")}
+       ${y === +today().slice(0,4) ? `<i class="tl-now" style="left:${atPct(doy(today()))}" title="today"></i>` : ""}
+       ${tl.map(t => {
+          const a = clamp(doy(t.start)), b = clamp(doy(t.end) + 1), col = purposeColor(t.purpose);
+          // The stay minus any nights credited to a trip nested inside it, so a
+          // week away in the middle of six weeks somewhere else draws as a gap
+          // rather than as one unbroken bar over days you were not there.
+          const segs = [];
+          let from = a;
+          t.awaySpans.forEach(x => {
+            const s0 = clamp(doy(x.start)), e0 = clamp(doy(x.end));
+            if (s0 > from) segs.push([from, s0]);
+            from = Math.max(from, e0);
+          });
+          if (b > from) segs.push([from, b]);
+          // The icon rides the longest segment; a 3-day tail cannot hold it.
+          const widest = segs.reduce((m, x, i) => x[1]-x[0] > segs[m][1]-segs[m][0] ? i : m, 0);
+          return `<div class="tl-row">
+            ${(segs.length ? segs : [[a, b]]).map(([s0, e0], i) => `<div class="tl-bar" style="left:${atPct(s0)};width:${
+                 ((e0-s0)/yDays*100).toFixed(2)}%;background:${tint(col,.28)};
+                 border:1.5px ${t.future ? "dashed" : "solid"} ${col}${
+                 i === widest ? "" : ";min-width:0"}" title="${esc(t.name)} · ${dateRange(t.start, t.end)}">${
+                 i === widest ? purposeIcon(t.purpose) : ""}</div>`).join("")}
+            <div class="tl-label${t.future ? " soon" : ""}" style="left:max(calc(${atPct(a)} + 42px), calc(${atPct(b)} + 8px))"><span class="nm">${esc(t.name)}</span><span
+                 class="amt">${t.future ? (t.actual ? money(t.actual) + " committed" : "booked") : money(t.actual)}</span></div>
+          </div>`; }).join("")}
+     </div>`;
+  // Labels start out after their bar; any that would then run off the card flip
+  // to the other side of it. Measured rather than guessed from a fraction of
+  // the year, because how much room a label needs depends on the name in it and
+  // on how wide the screen is — a December trip fits on a laptop and a July one
+  // does not fit on a phone.
+  {
+    const strip = document.getElementById("yrTimeline").getBoundingClientRect();
+    document.querySelectorAll("#yrTimeline .tl-row").forEach(row => {
+      const lab = row.querySelector(".tl-label");
+      if (lab.getBoundingClientRect().right <= strip.right) return;
+      const bars = row.querySelectorAll(".tl-bar");
+      const barLeft = bars[0].getBoundingClientRect().left;
+      lab.style.left = "auto";
+      lab.style.right = `${Math.max(0, strip.right - barLeft + 8)}px`;
+      // Nowhere left to put it: a long name on a narrow screen with the bar in
+      // the middle. Sitting on its own bar still reads; spilling off does not.
+      if (lab.getBoundingClientRect().left < strip.left) { lab.style.right = "auto"; lab.style.left = "0"; }
+    });
+  }
+
+  // The longest run of days with no trip on it — the fact the strip is drawn to
+  // show and the only one on this page a total cannot carry.
+  let seen = 0, gap = 0, gapAt = 0;
+  tl.forEach(t => {
+    const a = clamp(doy(t.start));
+    if (a - seen > gap) { gap = a - seen; gapAt = seen; }
+    seen = Math.max(seen, clamp(doy(t.end) + 1));
+  });
+  if (yDays - seen > gap) { gap = yDays - seen; gapAt = seen; }
+  document.getElementById("capTimeline").textContent =
+    `${ts.length} ${ts.length === 1 ? "trip" : "trips"} across ${y}.` + (gap > 20
+      ? ` Longest stretch at home: ${gap} days from ${MON[+iso(new Date(yStart).getTime() + gapAt*dayMs).slice(5,7) - 1]}.`
+      : "");
+
+  // ---- spend so far this year ----
+  // Cumulative ACTUAL spend, month by month. Anything paid before the year
+  // began (a flight booked last autumn) lands in January and anything after it
+  // in December, so the December figure is always the year total on the KPI
+  // above — a cumulative line that ended anywhere else would be wrong.
+  const monthly = Array(12).fill(0);
+  // t.real and t.conv, not it.amountBase: per-line loops sit outside tripStats
+  // and so miss both guards it applies — the estimate filter and the display
   // conversion. Both have to be re-applied by hand here.
-  const bucket = (want) => months.map(m => ts.reduce((a,t) =>
-    a + t.real.filter(it => it.date.slice(0,7)===m && !!it.prepaid===want)
-              .reduce((s,it)=>s+t.conv(it),0), 0));
-  mk("chYrMonths", { type:"bar", data:{ labels:months.map(m=>m.slice(5)), datasets:[
-      { label:"Prepaid / booked", data:bucket(true),  backgroundColor:c("--flights"), borderWidth:0 },
-      { label:"On the ground",    data:bucket(false), backgroundColor:c("--food"),    borderWidth:0 }]},
+  ts.forEach(t => t.real.forEach(it => {
+    const mi = Math.min(11, Math.max(0, (+it.date.slice(0,4) - y) * 12 + (+it.date.slice(5,7) - 1)));
+    monthly[mi] += t.conv(it);
+  }));
+  let run = 0;
+  const cum = monthly.map(v => (run += v));
+  // A year still in progress stops at this month rather than drawing a flat
+  // line to December, which would read as "we stopped spending".
+  const cut = y === +today().slice(0,4) ? +today().slice(5,7) - 1 : 11;
+  const planned = ts.reduce((a,t) => a + (t.budget || 0), 0);
+  mk("chYrPace", { type:"line", data:{ labels:MON, datasets:[
+      { label:"Spent", data:cum.map((v,i) => i <= cut ? v : null), borderColor:c("--accent"),
+        backgroundColor:"rgba(47,111,98,.10)", fill:true, tension:.25, pointRadius:3,
+        pointBackgroundColor:c("--accent"), spanGaps:false },
+      ...(planned ? [{ label:"Budget", data:MON.map(() => planned), borderColor:c("--warn"),
+        borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false }] : []) ]},
     options: baseOpts({ plugins:{ legend:{ display:true, position:"bottom",
         labels:{ color:c("--muted"), boxWidth:10, font:{size:11} } },
       tooltip:{ callbacks:{ label:(x)=>`${x.dataset.label}: ${money(x.raw)}` } } },
-      scales:{ x:Object.assign(gridOpts(),{stacked:true,grid:{display:false}}),
-               y:Object.assign(gridOpts(),{stacked:true,
-                 ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v}}) } })});
+      scales:{ x:Object.assign(gridOpts(),{grid:{display:false}}),
+               y:Object.assign(gridOpts(),{ ticks:{ color:c("--muted"), font:{size:11},
+                 callback:(v)=> v>=1000 ? baseSym()+(v/1000)+"k" : baseSym()+v }}) } })});
+  const peak = monthly.indexOf(Math.max(...monthly));
+  document.getElementById("capPace").textContent = total
+    ? `${MON[peak]} was the heaviest month at ${money(monthly[peak])}` +
+      (planned ? `, and the year is ${(total/planned*100).toFixed(0)}% of the way through its ${money(planned)} of budgets.` : ".")
+    : "Nothing spent yet this year.";
+}
+
+/* =============================================================
+   SECTION 8b — TRIPS INDEX
+   The browsable list of trips. Before this existed the only way to reach a
+   trip was a <select>, which stops being navigable somewhere around a dozen
+   trips and never showed you anything about them.
+============================================================= */
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const dayMon = (iso) => (+iso.slice(8,10)) + " " + MON[+iso.slice(5,7) - 1];
+// "2-12 May" while a trip stays inside one month, "28 Dec - 4 Jan" when it does not.
+const dateRange = (a, b) => a.slice(0,7) === b.slice(0,7)
+  ? `${+a.slice(8,10)}\u2013${+b.slice(8,10)} ${MON[+a.slice(5,7) - 1]}`
+  : `${dayMon(a)} \u2013 ${dayMon(b)}`;
+
+// Three states, derived rather than stored: a trip cannot be "active" in the
+// database, only relative to today. Colours reuse the existing palette — the
+// blue already used for booked trips, --good for a trip you are on, and a
+// terracotta --past for one that is done. --past is its own token rather than
+// --warn, which it sits near on the wheel: --warn means over budget, and those
+// two meanings must never be merged just because the swatches look alike.
+// Status colours the BADGE only. It used to colour the strip as well, which
+// meant the card said the same thing twice — and that redundancy is exactly what
+// freed the strip to carry the purpose instead.
+const TRIP_STATUS = {
+  active:   { label:"Active",   badge:"--good"    },
+  upcoming: { label:"Upcoming", badge:"--flights" },
+  past:     { label:"Past",     badge:"--muted"   },
+};
+// The one and only purpose list: the trip form's dropdown is generated from
+// this, so there is no second copy to drift. Each entry has a colour for the
+// card strip and an emoji for the tile and the dropdown — the same idiom as the
+// ledger's category chips, one level up. 🏂 is shared with the Snowboard
+// category deliberately: different concepts, same meaning. 🧳 for "other"
+// rather than ✈️, which is the Flights category.
+const PURPOSE = {
+  "beach":        { v:"--tp-beach",  icon:"🏖️" },
+  "city break":   { v:"--tp-city",   icon:"🏙️" },
+  "snowboarding": { v:"--tp-snow",   icon:"🏂" },
+  "hiking":       { v:"--tp-hiking", icon:"🥾" },
+  "family":       { v:"--tp-family", icon:"🏡" },
+  "work":         { v:"--tp-work",   icon:"💼" },
+  "other":        { v:"--tp-other",  icon:"🧳" },
+};
+const purposeColor = (p) => c((PURPOSE[p] || PURPOSE.other).v);
+const purposeIcon  = (p) => (PURPOSE[p] || PURPOSE.other).icon;
+const tripStatus = (t) => t.future ? "upcoming" : (t.end >= today() ? "active" : "past");
+const pinSvg = (cls) => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PIN}</svg>`;
+const PIN = '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/>';
+
+function tripCard(t){
+  const st = tripStatus(t), bcol = c(TRIP_STATUS[st].badge);
+  const col = purposeColor(t.purpose);
+  // PROJECTED, matching the trip page: this card answers "what will this cost".
+  // The estimate badge is what stops that being read as money already spent.
+  return `<button class="tcard" data-t="${t.id}" style="--st:${col}">
+      <span class="tc-head">
+        <span class="tc-pin" style="background:${tint(col, .14)}" aria-hidden="true">${purposeIcon(t.purpose)}</span>
+        <span class="tc-status" style="background:${tint(bcol, .12)};color:${bcol}">${TRIP_STATUS[st].label}</span>
+      </span>
+      <span class="tc-name">${esc(t.name)}</span>
+      <span class="tc-where">${t.country
+        ? `<svg viewBox="0 0 24 24" stroke="currentColor" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">${PIN}</svg>${esc(t.country)}`
+        : ""}${t.country && t.purpose ? " · " : ""}${
+        t.purpose ? `<span class="tc-purpose">${esc(t.purpose)}</span>` : ""}</span>
+      <span class="tc-dates">${dateRange(t.start, t.end)} \u00b7 ${t.nights} nights</span>
+      <span class="tc-foot"><span class="tc-amt">${money(t.projected)}</span>${
+        t.stale ? `<span class="pill est">${t.estCount} estimated</span>` : ""}</span>
+    </button>`;
+}
+
+function renderTripsList(S){
+  // Two axes, because they answer different questions. The status chips filter
+  // ("what is live right now?"); the year headings group ("what did 2024 cost?").
+  // Status alone stops scaling the moment Past holds a decade of trips.
+  const counts = { all:S.length, active:0, upcoming:0, past:0 };
+  S.forEach(t => counts[tripStatus(t)]++);
+  const f = state.tripFilter;
+  const shown = f === "all" ? S : S.filter(t => tripStatus(t) === f);
+
+  const chips = ["all","active","upcoming","past"].map(k =>
+    `<button class="tab ${f===k?"on":""}" data-f="${k}">${
+      k==="all" ? "All" : TRIP_STATUS[k].label} ${counts[k]}</button>`).join("");
+
+  const yrs = [...new Set(shown.map(t => t.year))].sort((a, z) => z - a);
+  const groups = yrs.map(y => {
+    const ts = shown.filter(t => t.year === y).sort((a, z) => z.start.localeCompare(a.start));
+    // Spend and guesses are reported SEPARATELY here, never added. The cards
+    // show projected, so a year whose trips are all still ahead would otherwise
+    // read "£0 spent" directly above a £4,275 card and look broken. It is not
+    // broken — one figure is money that moved, the other is a plan — but on the
+    // same screen that has to be said out loud rather than inferred.
+    const spent   = ts.reduce((a, t) => a + t.actual, 0);
+    const planned = ts.reduce((a, t) => a + t.planned, 0);
+    const sum = [spent ? money(spent) + " spent" : "", planned ? money(planned) + " planned" : ""]
+      .filter(Boolean).join(" \u00b7 ") || "nothing recorded";
+    return `<div class="tgroup">
+        <h3>${y}<span class="gsum">${ts.length} trip${ts.length > 1 ? "s" : ""} \u00b7 ${sum}</span></h3>
+        <div class="tgrid">${ts.map(tripCard).join("")}</div>
+      </div>`;
+  }).join("");
+
+  document.getElementById("tripsList").innerHTML = `
+    <div class="tripshead">
+      <h2>Trips <span class="sub">\u00b7 ${S.length} in all</span></h2>
+      <button class="btn primary" id="tripsNewBtn">+ New trip</button>
+    </div>
+    <div id="tabs2">${chips}</div>
+    ${groups || `<div class="muted">No ${f} trips.</div>`}`;
+
+  document.querySelectorAll("#tripsList .tcard").forEach(b =>
+    b.onclick = () => { state.tripId = b.dataset.t; render(); });
+  document.querySelectorAll("#tripsList .tab").forEach(b =>
+    b.onclick = () => { state.tripFilter = b.dataset.f; render(); });
+  // Delegates to the real header button rather than duplicating the handler —
+  // the same rule the phone action sheet follows. One implementation, always.
+  document.getElementById("tripsNewBtn").onclick = () =>
+    document.getElementById("newTripBtn").click();
 }
 
 /* =============================================================
    SECTION 9 — TRIP VIEW (the editable ledger)
 ============================================================= */
 function renderTrip(S){
-  const sel = document.getElementById("tripPick");
-  sel.innerHTML = S.slice().reverse().map(t =>
-    `<option value="${t.id}" ${t.id===state.tripId?"selected":""}>${esc(t.name)} · ${t.start.slice(0,7)}${
-       t.stale ? " · " + t.estCount + " estimated" : ""}</option>`).join("");
-  sel.onchange = () => { state.tripId = sel.value; render(); };
+  document.getElementById("allTripsBtn").onclick = () => { state.tripId = null; render(); };
 
   const t = S.find(x => x.id === state.tripId) || S[S.length-1];
+
+  // Heading: the card you clicked, opened. Same tile, same wash, same badge.
+  const pcol = purposeColor(t.purpose), st = tripStatus(t), bcol = c(TRIP_STATUS[st].badge);
+  const tile = document.getElementById("tripTile");
+  tile.textContent = purposeIcon(t.purpose);
+  tile.style.background = tint(pcol, .14);
+  document.getElementById("tripName").textContent = t.name;
+  const badge = document.getElementById("tripStatus");
+  badge.textContent = TRIP_STATUS[st].label;
+  badge.style.background = tint(bcol, .12);
+  badge.style.color = bcol;
 
   // One wrapping facts line instead of three rigid columns. Segments are joined
   // by a hairline divider rather than a "·" so a wrap never leaves a dangling
   // separator at the start of the next line.
   document.getElementById("tripMeta").innerHTML = [
     `<span><b>${fmtRange(t.start, t.end)}</b></span>`,
-    `<span><b>${t.nights}</b> nights</span>`,
+    `<span><b>${t.nights}</b> nights${t.awayNights
+       ? ` <span class="muted">of ${t.spanNights}</span>` : ""}</span>`,
     `<span><b>${t.travellers}</b> travellers</span>`,
     t.country ? `<span>${esc(t.country)}</span>` : "",
-    `<span>${esc(t.purpose)}</span>`,
+    `<span class="tc-purpose" style="--st:${pcol}">${esc(t.purpose)}</span>`,
     t.rating ? `<span><b>${t.rating}</b>★</span>` : `<span class="pill">not rated</span>`,
-    t.future ? `<span class="pill future">booked</span>` : "",
     t.estCount ? `<span class="pill est">${t.estCount} estimated</span>` : "",
   ].filter(Boolean).join(`<span class="sep"></span>`);
+  // Named outright rather than left as a silent subtraction: a trip whose night
+  // count is lower than its dates suggest has to say why, or it reads as a bug.
+  if (t.awayNights) document.getElementById("tripMeta").insertAdjacentHTML("beforeend",
+    `<div class="metanote">${t.awayNights} ${t.awayNights === 1 ? "night" : "nights"} of this stay
+     ${t.awayNights === 1 ? "was" : "were"} spent in ${
+       [...new Set(t.elsewhere.map(x => esc(x.name)))].join(", ")}, and ${
+       t.awayNights === 1 ? "counts" : "count"} there instead.</div>`);
 
   const over = t.budget && t.projected > t.budget;
   // The trip page is the planning surface, so it reports PROJECTED — but never
@@ -1354,94 +2444,66 @@ function renderTrip(S){
   // outright, so you always know how much of the number is real.
   document.getElementById("tripKpis").innerHTML = [
     [ t.planned ? "Projected" : "Total", money(t.projected),
-      t.planned ? `${money(t.actual)} paid + ${money(t.planned)} estimated` : `${t.items.length} line items`, ""],
+      t.planned ? `${money(t.actual)} paid + ${money(t.planned)} estimated` : `${t.items.length} line items`, "", KICON.money],
     ["Vs budget", t.variance===null ? "—" : pct(t.variance),
-      t.budget ? `${money(t.budget)} budget` : "no budget set", over?"up":"down"],
-    ["Per night", t.nights?money(t.perNight):"—", t.planned ? "projected, whole party" : "whole party", ""],
+      t.budget ? `${money(t.budget)} budget` : "no budget set", over?"up":"down", KICON.target],
+    ["Per night", t.nights?money(t.perNight):"—", t.planned ? "projected, whole party" : "whole party", "", KICON.moon],
     ["Per person / day", t.cpppdProj?money(t.cpppdProj):"—",
-      t.cpppdProj ? (t.planned ? "projected" : `${money(t.cpppdEx)} excluding flights`) : "", ""],
-  ].map(([l,v,d,cls]) =>
-    `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>
+      t.cpppdProj ? (t.planned ? "projected" : `${money(t.cpppdEx)} excluding flights`) : "", "", KICON.person],
+  ].map(([l,v,d,cls,ic]) =>
+    `<div class="kpi"><div class="l">${ic ? kicon(ic) : ""}${l}</div><div class="v">${v}</div>
      <div class="kdelta ${cls}">${d}</div></div>`).join("");
 
   // ---- ledger ----
   // If the row being edited has since vanished (deleted, or we switched trips),
   // drop out of edit mode rather than rendering an orphaned form.
-  if (EDIT && !t.items.find(i => i.id === EDIT)) EDIT = null;
 
   const led = document.getElementById("tripLedger");
-  led.innerHTML = t.items.length ? t.items.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(it =>
-    it.id === EDIT ? editRowHTML(it) :
+  // Grouped under a day header. The header carries the date and nothing else —
+  // no day total, by choice — so the rows themselves carry no date at all.
+  const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const dayLabel = (iso) => DOW[new Date(iso + "T00:00:00").getDay()] + " " + dayMon(iso);
+  const sorted = t.items.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const ledgerDays = [...new Set(sorted.map(it => it.date))];
+  const rowHTML = (it) =>
     `<div class="lrow"${it.currency !== DISP()
         ? ` title="${inCur(it.amount, it.currency)} at ${it.fx} ${BASE()} per ${it.currency}"` : ""}>
-       <span class="d">${it.date.slice(5)}</span>
-       <span class="cat" data-d="${it.date.slice(5)}"><i class="dot" style="background:${catColor(it.category)}"></i><span>${CAT[it.category]?CAT[it.category].label:it.category}</span></span>
-       <span class="n">${esc(it.note)}</span>
-       <span class="orig">${it.currency !== DISP() ? inCur(it.amount, it.currency) : ""}</span>
-       <span class="flags">${it.prepaid?'<span class="pill">prepaid</span>':""}${
-         it.estimated?'<span class="pill est">estimate</span>':""}</span>
-       <span class="amt${it.estimated?" est":""}">${money2(t.conv(it))}</span>
+       <i class="catico" style="background:${tint(catColor(it.category), .16)}">${catIcon(it.category)}</i>
+       <div class="body">
+         <div class="n">${esc(it.note) || (CAT[it.category]?CAT[it.category].label:it.category)}</div>
+         <div class="meta">${it.note ? `<span>${CAT[it.category]?CAT[it.category].label:it.category}</span>` : ""}${
+           it.prepaid?'<span class="pill">prepaid</span>':""}${
+           it.estimated?'<span class="pill est">estimate</span>':""}</div>
+       </div>
+       <div class="amts"><span class="amt${it.estimated?" est":""}">${money2(t.conv(it))}</span>${
+         it.currency !== DISP() ? `<span class="orig">${inCur(it.amount, it.currency)}</span>` : ""}</div>
        <button class="pencil" data-e="${it.id}" title="Edit">✎</button>
        <button class="trash" data-i="${it.id}" title="Delete">✕</button>
-     </div>`).join("") : `<div class="empty">No line items yet — add the flights first.</div>`;
+     </div>`;
+  led.innerHTML = sorted.length ? ledgerDays.map(day =>
+      `<div class="dayhead">${dayLabel(day)}</div>` + sorted.filter(it => it.date === day).map(rowHTML).join("")
+    ).join("") : `<div class="empty">No line items yet — add the flights first.</div>`;
 
-  led.querySelectorAll(".pencil").forEach(b => b.onclick = () => { EDIT = b.dataset.e; render(); });
+  led.querySelectorAll(".pencil").forEach(b =>
+    b.onclick = () => openItemModal(t, t.items.find(i => i.id === b.dataset.e)));
+  document.getElementById("addItemBtn").onclick = () => openItemModal(t, null);
   led.querySelectorAll(".trash").forEach(b => b.onclick = async () => {
     if (!confirm("Delete this line item?")) return;
     try { await api("DELETE", `/api/trips/${t.id}/items/${b.dataset.i}`); await reload(); render(); }
     catch(e){ alert("Could not delete: " + e.message); }
   });
-  if (EDIT) wireEditRow(t, t.items.find(i => i.id === EDIT));
-
-  // ---- add-item row ----
-  const catSel = document.getElementById("niCat");
-  if (!catSel.options.length)
-    catSel.innerHTML = CATS.map(x => `<option value="${x.id}">${x.label}</option>`).join("");
-  const curSel = document.getElementById("niCur");
-  curSel.innerHTML = CURS().map(x => `<option value="${x.code}">${x.code}</option>`).join("");
-  curSel.value = t.defaultCurrency || BASE();
-  const dateIn = document.getElementById("niDate");
-  if (!dateIn.value || dateIn.dataset.trip !== t.id) { dateIn.value = t.start; dateIn.dataset.trip = t.id; }
-  syncFx();
-  curSel.onchange = syncFx;
-  // Re-tick the prepaid box from the category's default whenever the category
-  // changes. Without this the box goes stale: pick Car rental (prepaid), then
-  // Restaurants, and you'd silently file a dinner as booked-ahead money.
-  const syncPrepaid = () => {
-    document.getElementById("niPre").checked = !!(CAT[catSel.value] && CAT[catSel.value].pre);
-  };
-  // The estimate box is deliberately NOT reset by the category: when you sit
-  // down to plan a trip you tick it once and add ten lines in a row.
-  catSel.onchange = syncPrepaid;
-  syncPrepaid();
-
-  document.getElementById("niAdd").onclick = async () => {
-    const amt = Number(document.getElementById("niAmt").value);
-    if (!Number.isFinite(amt) || amt <= 0) return alert("Amount must be a number greater than zero.");
-    const cat = catSel.value;
-    try {
-      await api("POST", `/api/trips/${t.id}/items`, {
-        date: dateIn.value || t.start,
-        category: cat,
-        amount: amt,
-        currency: curSel.value,
-        fx: Number(document.getElementById("niFx").value),
-        note: document.getElementById("niNote").value || (CAT[cat] ? CAT[cat].label : cat),
-        prepaid: document.getElementById("niPre").checked,   // explicit — the box wins over the server's inference
-        estimated: document.getElementById("niEst").checked,
-      });
-      document.getElementById("niAmt").value = "";
-      document.getElementById("niNote").value = "";
-      await reload(); render();
-    } catch(e){ alert("Could not add: " + e.message); }
-  };
 
   // ---- category doughnut ----
   // Projected per category, so a trip you haven't taken still shows a shape.
   // The legend names the estimated portion per category — the donut itself
   // can't encode "of which a guess", so the number carries it instead.
   const catTotal = (id) => (t.byCat[id]||0) + (t.byCatEst[id]||0);
-  const used = CATS.filter(x => catTotal(x.id));
+  const used = CATS.filter(x => catTotal(x.id)).sort((a, b) => catTotal(b.id) - catTotal(a.id));
+
+  wireBdToggle("bdTitle", "bdToggle", "bdBars", "bdDonut", "Breakdown");
+  document.getElementById("bdBars").innerHTML =
+    bdBarsHTML(used.map(x => ({ cat:x, act:t.byCat[x.id] || 0, est:t.byCatEst[x.id] || 0 })), t.projected);
+
   mk("chTripCats", { type:"doughnut",
     data:{ labels:used.map(x=>x.label), datasets:[{ data:used.map(x=>catTotal(x.id)),
       backgroundColor:used.map(x=>catColor(x.id)), borderWidth:2, borderColor:c("--surface") }]},
@@ -1463,110 +2525,106 @@ function renderTrip(S){
         ${code!==BASE() ? `<div class="ml" style="margin-top:2px">= ${money(v.base)}</div>` : ""}
       </div>`).join("")
     : `<div class="empty">Nothing logged yet.</div>`;
-
-  // ---- daily burn ----
-  const days = Array.from({length:t.nights+1}, (_,i) => addDays(t.start, i));
-  // Same rule as the year chart. "Burn" is a record of what you actually spent
-  // that day; a planned figure has no day on which it was spent.
-  const burn = days.map(d => t.real.filter(it => !it.prepaid && it.date===d).reduce((a,it)=>a+t.conv(it),0));
-  const avg  = burn.reduce((a,b)=>a+b,0) / days.length;
-  mk("chTripBurn", { type:"bar", data:{ labels:days.map(d=>d.slice(8)), datasets:[
-      { data:burn, backgroundColor:c("--food"), borderWidth:0 }]},
-    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{ callbacks:{
-        title:(x)=>days[x[0].dataIndex], label:(x)=>money2(x.raw)+" that day" }}},
-      scales:{ x:Object.assign(gridOpts(),{grid:{display:false}}),
-               y:Object.assign(gridOpts(),{ticks:{color:c("--muted"),font:{size:11},callback:(v)=>baseSym()+v}}) } })});
-  document.getElementById("capBurn").textContent = t.onground
-    ? `${money(t.onground)} on the ground over ${days.length} days — ${money(avg)} a day on average, against ${money(t.prepaid)} paid before leaving.`
-    : "Nothing spent on the ground yet.";
 }
 
-/* ---- inline line-item editing ----
-   EDIT holds the id of the single row currently in edit mode (null = none).
-   Because only one row can be open at a time, the edit controls can use fixed
-   element ids — the same trick rental_tracker uses, and the reason this needs
-   no per-row id mangling. */
-let EDIT = null;
+/* =============================================================
+   SECTION 9b — line item dialog (add + edit)
+============================================================= */
+let editingItem = null;          // null = adding
+let itemTrip = null;             // the trip the dialog was opened for
+// Remembered between adds within one trip. Sitting down to log a day out means
+// the same date, category and currency ten lines in a row — the dialog should
+// not make you re-pick them each time.
+let lastItem = { tripId:null };
 
-function editRowHTML(it){
-  const cats = CATS.map(x => `<option value="${x.id}" ${x.id===it.category?"selected":""}>${x.label}</option>`).join("");
-  const curs = CURS().map(x => `<option value="${x.code}" ${x.code===it.currency?"selected":""}>${x.code}</option>`).join("");
-  const isBase = it.currency === BASE();
-  return `<div class="editrow">
-    <input id="edDate" type="date" class="mono w-date" value="${it.date}" />
-    <select id="edCat" class="mono w-cat">${cats}</select>
-    <input id="edNote" class="grow" value="${esc(it.note)}" placeholder="note" />
-    <div class="amtwrap w-amt"><span class="cur" id="edSym">${esc(curOf(it.currency).symbol)}</span>
-      <input id="edAmt" class="mono" type="number" step="0.01" value="${it.amount}" /></div>
-    <select id="edCur" class="mono w-cur">${curs}</select>
-    <input id="edFx" class="mono w-fx" type="number" step="0.0001" value="${it.fx}" ${isBase?"disabled":""}
-           title="Rate: ${BASE()} per 1 unit" />
-    <label class="chk" title="Paid ahead of the trip rather than while away"><input id="edPre" type="checkbox" ${it.prepaid?"checked":""} /> prepaid</label>
-    <label class="chk" title="Untick once you know the real price"><input id="edEst" type="checkbox" ${it.estimated?"checked":""} /> estimate</label>
-    <button class="btn sm primary" id="edSave">Save</button>
-    <button class="btn sm" id="edCancel">Cancel</button>
-  </div>`;
-}
-
-function wireEditRow(trip, orig){
-  const g = (id) => document.getElementById(id);
-
-  // Currency switching inside an edit is the one case where the frozen rate
-  // must NOT be kept: a EUR rate is meaningless once the line becomes RON. So
-  // keep the stored rate while the currency is unchanged, and re-prefill from
-  // the current default the moment it changes.
-  const syncEditFx = () => {
-    const code = g("edCur").value;
-    const isBase = code === BASE();
-    g("edSym").textContent = curOf(code).symbol;
-    g("edFx").disabled = isBase;
-    g("edFx").value = isBase ? 1 : (code === orig.currency ? orig.fx : curOf(code).rate);
-  };
-  g("edCur").onchange = syncEditFx;
-
-  const cancel = () => { EDIT = null; render(); };
-  const save = async () => {
-    const amt = Number(g("edAmt").value);
-    if (!Number.isFinite(amt) || amt <= 0) return alert("Amount must be a number greater than zero.");
-    try {
-      await api("PUT", `/api/trips/${trip.id}/items/${orig.id}`, {
-        date: g("edDate").value,
-        category: g("edCat").value,
-        note: g("edNote").value,
-        amount: amt,
-        currency: g("edCur").value,
-        fx: Number(g("edFx").value),
-        prepaid: g("edPre").checked,   // explicit, so editing never silently re-infers it from the category
-        estimated: g("edEst").checked, // untick + correct the amount once you know the real price
-      });
-      EDIT = null; await reload(); render();
-    } catch(e){ alert("Could not save: " + e.message); }
-  };
-  g("edSave").onclick = save;
-  g("edCancel").onclick = cancel;
-
-  // Enter saves, Escape cancels — a two-key edit beats reaching for the mouse
-  // when you're correcting a row you just typed.
-  ["edDate","edNote","edAmt","edFx"].forEach(id => g(id).onkeydown = (e) => {
-    if (e.key === "Enter") { e.preventDefault(); save(); }
-    if (e.key === "Escape") { e.preventDefault(); cancel(); }
-  });
-  g("edNote").focus();
-}
-
-// Pre-fill the FX box with the current default for the chosen currency, and
-// lock it when the currency IS the base — a base rate other than 1 would make
-// the ledger disagree with itself.
+// Pre-fill the rate for the chosen currency and lock it to 1 when that currency
+// IS the base — a base rate other than 1 would make the ledger disagree with
+// itself. When editing, the line's FROZEN rate is kept while its currency is
+// unchanged; a currency change re-prefills from today's default, because a
+// EUR rate is meaningless once the line becomes RON.
 function syncFx(){
-  const code = document.getElementById("niCur").value;
-  const fxIn = document.getElementById("niFx");
-  const isBase = code === BASE();
-  fxIn.value = isBase ? 1 : curOf(code).rate;
-  fxIn.disabled = isBase;
-  document.getElementById("niSym").textContent = curOf(code).symbol;
-  document.getElementById("fxHint").textContent = isBase
+  const g = (id) => document.getElementById(id);
+  const code = g("niCur").value, isBase = code === BASE();
+  g("niSym").textContent = curOf(code).symbol;
+  g("niFx").disabled = isBase;
+  g("niFx").value = isBase ? 1
+    : (editingItem && code === editingItem.currency ? editingItem.fx : curOf(code).rate);
+  g("fxHint").textContent = isBase
     ? `Amounts entered in ${code}, the base currency.`
     : `Rate is ${BASE()} per 1 ${code}, pre-filled from settings and editable per line. Whatever you save is frozen onto this item.`;
+}
+function syncItemTile(){
+  const cat = document.getElementById("niCat").value, tile = document.getElementById("itemTile");
+  tile.textContent = catIcon(cat);
+  tile.style.background = tint(catColor(cat), .16);
+}
+
+function openItemModal(trip, item){
+  itemTrip = trip; editingItem = item || null;
+  const g = (id) => document.getElementById(id);
+  g("itemErr").classList.remove("show");
+  g("niCat").innerHTML = CATS.map(x => `<option value="${x.id}">${x.icon} ${x.label}</option>`).join("");
+  g("niCur").innerHTML = CURS().map(x => `<option value="${x.code}">${x.code}</option>`).join("");
+  const mem = !item && lastItem.tripId === trip.id ? lastItem : null;
+  g("niNote").value  = item ? item.note : "";
+  g("niCat").value   = item ? item.category : (mem ? mem.category : CATS[0].id);
+  g("niDate").value  = item ? item.date : (mem ? mem.date : trip.start);
+  g("niAmt").value   = item ? item.amount : "";
+  g("niCur").value   = item ? item.currency : (mem ? mem.currency : (trip.defaultCurrency || BASE()));
+  g("niPre").checked = item ? !!item.prepaid : (mem ? mem.prepaid : !!(CAT[g("niCat").value] && CAT[g("niCat").value].pre));
+  // The estimate box is deliberately remembered rather than reset: when you sit
+  // down to plan a trip you tick it once and add ten lines in a row.
+  g("niEst").checked = item ? !!item.estimated : (mem ? mem.estimated : false);
+  syncFx(); syncItemTile();
+  g("itemModalLabel").textContent = item ? "Edit line" : "New line";
+  g("niSaveMore").style.display = item ? "none" : "";
+  g("itemModal").classList.add("open");
+  g("niNote").focus();
+}
+
+{
+  const g = (id) => document.getElementById(id);
+  g("niCur").onchange = syncFx;
+  g("niCat").onchange = () => {
+    syncItemTile();
+    // Re-tick prepaid from the category default when ADDING: pick Flights
+    // then Food and you would otherwise file a dinner as booked-ahead
+    // money. When editing, the stored flag is a fact about that line and wins.
+    if (!editingItem) g("niPre").checked = !!(CAT[g("niCat").value] && CAT[g("niCat").value].pre);
+  };
+  const showErr = (m) => { const e = g("itemErr"); e.textContent = m; e.classList.add("show"); };
+
+  async function saveItem(another){
+    const t = itemTrip, amt = Number(g("niAmt").value);
+    if (!Number.isFinite(amt) || amt <= 0) return showErr("Amount must be a number greater than zero.");
+    const cat = g("niCat").value;
+    const body = {
+      date: g("niDate").value || t.start, category: cat, amount: amt, currency: g("niCur").value,
+      fx: Number(g("niFx").value),
+      // A new line with no note takes its category's label; an edited line keeps
+      // whatever is typed, so clearing a note on purpose stays cleared.
+      note: g("niNote").value || (editingItem ? "" : (CAT[cat] ? CAT[cat].label : cat)),
+      prepaid: g("niPre").checked,    // explicit — the box wins over the server's inference
+      estimated: g("niEst").checked,  // untick + correct the amount once you know the real price
+    };
+    try {
+      if (editingItem) await api("PUT", `/api/trips/${t.id}/items/${editingItem.id}`, body);
+      else             await api("POST", `/api/trips/${t.id}/items`, body);
+      lastItem = { tripId:t.id, date:body.date, category:cat, currency:body.currency,
+                   prepaid:body.prepaid, estimated:body.estimated };
+      await reload(); render();
+      if (another && !editingItem) { g("niNote").value = ""; g("niAmt").value = ""; g("niNote").focus(); }
+      else g("itemModal").classList.remove("open");
+    } catch(e){ showErr("Could not save: " + e.message); }
+  }
+  g("niSave").onclick     = () => saveItem(false);
+  g("niSaveMore").onclick = () => saveItem(true);
+  // Enter saves and closes; Shift+Enter saves and keeps the dialog open for the
+  // next line; Escape closes without saving.
+  ["niNote","niAmt","niFx","niDate","niCat","niCur"].forEach(id => g(id).onkeydown = (e) => {
+    if (e.key === "Enter")  { e.preventDefault(); saveItem(e.shiftKey && !editingItem); }
+    if (e.key === "Escape") { e.preventDefault(); g("itemModal").classList.remove("open"); }
+  });
 }
 
 /* =============================================================
@@ -1576,22 +2634,49 @@ let editingTrip = null;                     // null = creating
 
 function openTripModal(trip){
   editingTrip = trip || null;
-  document.getElementById("tripModalTitle").textContent = trip ? "Edit trip" : "New trip";
+  // The pin belongs on the dialog rather than the button: the button says what
+  // it does ("+"), the dialog says what you are looking at. Same PIN constant
+  // as the trip cards, so the mark is identical wherever a trip is represented.
+  document.getElementById("tripModalTitle").innerHTML =
+    pinSvg("h3ico") + (trip ? "Edit trip" : "New trip");
   document.getElementById("tripErr").classList.remove("show");
   const g = (id) => document.getElementById(id);
   g("tfCurrency").innerHTML = CURS().map(x => `<option value="${x.code}">${x.code}</option>`).join("");
+  // Same idiom as the category dropdown: value is the key, label is icon + key.
+  // Object insertion order is the display order — what you do, then who/why,
+  // then the catch-all.
+  g("tfPurpose").innerHTML = Object.entries(PURPOSE)
+    .map(([k, v]) => `<option value="${k}">${v.icon} ${k}</option>`).join("");
   g("tfName").value       = trip ? trip.name : "";
   g("tfCountry").value    = trip ? trip.country : "";
-  g("tfPurpose").value    = trip ? trip.purpose : "leisure";
+  // New trips preselect "city break" — the most common kind. A real default was
+  // how "leisure" came to mean "didn't pick", but the risk is smaller now: the
+  // purpose shows on the card as an icon, a colour and a word, so a wrong tag is
+  // seen rather than buried. The SERVER still defaults to "other" for anything
+  // that arrives without a purpose (imports, the API) — that path has no eyes.
+  g("tfPurpose").value    = trip ? trip.purpose : "city break";
   g("tfStart").value      = trip ? trip.start : "";
   g("tfEnd").value        = trip ? trip.end : "";
   g("tfTravellers").value = trip ? trip.travellers : DEF_TRAVELLERS();
   g("tfBudget").value     = trip ? trip.budget : "";
   g("tfCurrency").value   = trip ? (trip.defaultCurrency || BASE()) : BASE();
   g("tfRating").value     = trip && trip.rating ? trip.rating : "";
-  g("tfNote").value       = trip ? (trip.note || "") : "";
+  // A trip you have not taken has no rating to give, so the field is only
+  // offered on Edit. Stored ratings are untouched either way.
+  g("tfRatingRow").style.display = trip ? "" : "none";
+  // Stop the end date being set before the start date. The server rejects
+  // end < start with a 400 anyway; this keeps the picker from offering it.
+  g("tfEnd").min = trip ? trip.start : "";
   document.getElementById("tripModal").classList.add("open");
 }
+
+// Narrow the end picker as soon as a start is chosen, and drop an end that the
+// new start has just invalidated rather than leaving a value the server will refuse.
+document.getElementById("tfStart").onchange = () => {
+  const a = document.getElementById("tfStart"), b = document.getElementById("tfEnd");
+  b.min = a.value || "";
+  if (a.value && b.value && b.value < a.value) b.value = "";
+};
 
 document.getElementById("tripSave").onclick = async () => {
   const g = (id) => document.getElementById(id).value;
@@ -1599,7 +2684,7 @@ document.getElementById("tripSave").onclick = async () => {
     name:g("tfName"), country:g("tfCountry"), purpose:g("tfPurpose"),
     start:g("tfStart"), end:g("tfEnd"), travellers:g("tfTravellers"),
     budget:g("tfBudget") === "" ? 0 : g("tfBudget"),
-    defaultCurrency:g("tfCurrency"), rating:g("tfRating"), note:g("tfNote"),
+    defaultCurrency:g("tfCurrency"), rating:g("tfRating"),
   };
   try {
     const saved = editingTrip
@@ -1643,7 +2728,7 @@ const ratesBtn = document.getElementById("ratesBtn"), ratesLbl = document.getEle
 function ratesState(cls, text, revert){
   ratesBtn.className = "btn" + (cls ? " " + cls : "");
   ratesLbl.textContent = text;
-  if (revert) setTimeout(() => { ratesBtn.className = "btn"; ratesLbl.textContent = "Rates update"; }, 6000);
+  if (revert) setTimeout(() => { ratesBtn.className = "btn"; ratesLbl.textContent = "Rates"; }, 6000);
 }
 ratesBtn.onclick = async () => {
   ratesBtn.disabled = true;
@@ -1665,14 +2750,44 @@ document.getElementById("newTripBtn").onclick   = () => openTripModal(null);
 document.getElementById("firstTripBtn").onclick = () => openTripModal(null);
 document.getElementById("editTripBtn").onclick  = () =>
   openTripModal(DATA.trips.find(t => t.id === state.tripId));
-document.getElementById("delTripBtn").onclick   = async () => {
-  const t = DATA.trips.find(x => x.id === state.tripId);
+// Deleting a trip takes its whole ledger with it. The guard is typing the name:
+// a confirm() box gets dismissed by reflex, a name does not. Match is
+// case-insensitive and trims whitespace — the point is intent, not spelling.
+let deletingTrip = null;
+document.getElementById("delTripBtn").onclick = () => {
+  // stats(), not DATA.trips: the raw record has no `actual` — that figure only
+  // exists on the tripStats view, and it is the honest one to quote here.
+  const t = stats().find(x => x.id === state.tripId);
   if (!t) return;
-  // Deleting a trip takes its whole ledger with it, so name the cost out loud.
-  if (!confirm(`Delete "${t.name}" and all ${t.items.length} of its line items?\n\nA snapshot is taken first, so this can be undone from Restore.`)) return;
-  try { await api("DELETE", `/api/trips/${t.id}`); state.tripId = null; await reload(); render(); }
-  catch(e){ alert("Could not delete: " + e.message); }
+  deletingTrip = t;
+  const g = (id) => document.getElementById(id);
+  g("delTitle").textContent = `Delete ${t.name}?`;
+  g("delSub").innerHTML = `This removes the trip and all <b>${t.items.length}</b> of its line items`
+    + (t.items.length ? ` — ${money(t.actual)} of recorded spend` : "") + `.`;
+  g("delName").value = ""; g("delName").placeholder = t.name;
+  g("delConfirm").disabled = true;
+  g("delModal").classList.add("open");
+  g("delName").focus();
 };
+{
+  const g = (id) => document.getElementById(id);
+  const matches = () => deletingTrip &&
+    g("delName").value.trim().toLowerCase() === deletingTrip.name.trim().toLowerCase();
+  g("delName").oninput = () => { g("delConfirm").disabled = !matches(); };
+  g("delName").onkeydown = (e) => {
+    if (e.key === "Enter" && matches()) { e.preventDefault(); g("delConfirm").click(); }
+    if (e.key === "Escape") { e.preventDefault(); g("delModal").classList.remove("open"); }
+  };
+  g("delConfirm").onclick = async () => {
+    if (!matches()) return;
+    const t = deletingTrip;
+    try {
+      await api("DELETE", `/api/trips/${t.id}`);
+      g("delModal").classList.remove("open");
+      deletingTrip = null; state.tripId = null; await reload(); render();
+    } catch(e){ alert("Could not delete: " + e.message); }
+  };
+}
 
 /* =============================================================
    SECTION 11 — currency settings modal
@@ -1682,7 +2797,7 @@ function drawCurRows(list){
     <div class="currow" data-i="${i}">
       <input class="mono cc" value="${esc(x.code)}" placeholder="EUR" maxlength="8" />
       <input class="cs" value="${esc(x.symbol)}" placeholder="€" maxlength="4" />
-      <input class="mono cr" type="number" step="0.0001" value="${x.rate}" placeholder="0.85" />
+      <input class="mono cr" type="number" inputmode="decimal" step="0.0001" value="${x.rate}" placeholder="0.85" />
       <button class="trash cdel" title="Remove">✕</button>
     </div>`).join("");
   document.querySelectorAll("#curRows .cdel").forEach(b => b.onclick = () => {
@@ -1797,6 +2912,117 @@ document.addEventListener("keydown", (e) => {
 /* =============================================================
    SECTION 13 — boot
 ============================================================= */
+// Card titles that never change text get their icon once, here. Titles that are
+// rebuilt on render (yrBvaTitle, the two breakdowns) add theirs inline instead.
+// The Trips-tab glyph and the card PIN are reused where the concept is the same.
+[
+  ["ovSpendTitle",  KICON.chart],   ["ovPPDTitle",   KICON.trend],  ["ovShareTitle", KICON.percent],
+  ["ovDestTitle",   PIN],           ["ovValueTitle", KICON.scatter],["ovEstTitle",   KICON.calc],
+  ["yrTlTitle",     ICONS.year],    ["yrPaceTitle",  KICON.trend],
+  ["ledgerTitle",   KICON.receipt],
+  ["tripCurTitle",  KICON.coins],
+].forEach(([id, d]) => document.getElementById(id).insertAdjacentHTML("afterbegin", kicon(d, "h2ico")));
+
+// An installed app has no address bar, no reload and — since the bounce is
+// disabled — no pull-to-refresh, so a session resumed from the app switcher
+// would show whatever it loaded whenever it last started. With the worker
+// caching the store that could be days old. Re-read it on the way back in.
+let refreshing = false;
+async function refresh(){
+  if (refreshing || document.visibilityState !== "visible") return;
+  refreshing = true;
+  // A failure here means the server is unreachable, which is not worth an
+  // error: what is already on screen stays, and the offline strip explains it.
+  try { await reload(); render(); } catch(_) {}
+  finally { refreshing = false; }
+}
+document.addEventListener("visibilitychange", refresh);
+window.addEventListener("online", refresh);
+
+/* =============================================================
+   Appearance — light, dark, or follow the device.
+
+   The stored value is one of three; what lands on <html> is only ever "light"
+   or "dark", resolved here. That is what lets the stylesheet carry a single
+   dark block instead of restating forty tokens for a media query and again for
+   an attribute selector — and it is why a manual choice beats the system
+   setting in both directions rather than only one.
+
+   Stored per device, not in the trip file: wanting the phone dark at night and
+   the laptop light in the morning is the normal case, and a synced theme would
+   fight that.
+============================================================= */
+const THEME_MODES = [["light", "Light", KICON.sun], ["dark", "Dark", KICON.moon], ["auto", "Auto", KICON.auto]];
+const themeMode = () => { try { return localStorage.getItem("hl-theme") || "auto"; } catch (_) { return "auto"; } };
+
+function applyTheme(){
+  const mode = themeMode();
+  const dark = mode === "dark" || (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // Read back from the stylesheet rather than repeating the hex here: the
+  // browser chrome then follows the palette automatically if it is ever retuned.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = c("--paper");
+  document.querySelectorAll('[data-seg="theme"] button').forEach(b =>
+    b.classList.toggle("on", b.dataset.v === mode));
+  // The header carries one button rather than three: it shows where you are
+  // and says where the next press goes, which is the whole of its job.
+  const btn = document.getElementById("themeBtn");
+  if (btn) {
+    const i = THEME_MODES.findIndex(m => m[0] === mode);
+    const [, label, icon] = THEME_MODES[i];
+    const next = THEME_MODES[(i + 1) % THEME_MODES.length][1];
+    btn.innerHTML = kicon(icon, "tico") + `<span>${label}</span>`;
+    btn.title = `Appearance: ${label} — switch to ${next}`;
+    btn.setAttribute("aria-label", btn.title);
+  }
+}
+
+// light → dark → auto → light. Wrapping rather than stopping at the end means
+// the button never becomes a dead control at one end of the range.
+const cycleTheme = () => {
+  const i = THEME_MODES.findIndex(m => m[0] === themeMode());
+  setTheme(THEME_MODES[(i + 1) % THEME_MODES.length][0]);
+};
+
+function setTheme(mode){
+  try { localStorage.setItem("hl-theme", mode); } catch (_) {}
+  applyTheme();
+  render();                       // charts hold the colours they were built with
+}
+
+// Built once from THEME_MODES into every container carrying data-seg, so the
+// desktop menu and the phone sheet cannot drift apart — the same reason the
+// sheet delegates its actions to the header buttons rather than copying them.
+document.getElementById("themeBtn").onclick = cycleTheme;
+document.querySelectorAll('[data-seg="theme"]').forEach(box => {
+  box.innerHTML = THEME_MODES.map(([v, label, icon]) =>
+    `<button type="button" data-v="${v}" aria-label="${label}" title="${label}"
+       >${kicon(icon, "")}<span class="lbl">${label}</span></button>`).join("");
+  box.querySelectorAll("button").forEach(b => b.onclick = () => setTheme(b.dataset.v));
+});
+
+// Only meaningful on "auto", where the device is the input — but harmless
+// otherwise, since applyTheme re-reads the stored mode either way.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { applyTheme(); render(); });
+applyTheme();
+
+// The keyboard changes the VISUAL viewport only, so this is the one height a
+// dialog can trust. Published as --vvh for the CSS above.
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const fit = () => document.documentElement.style.setProperty("--vvh", vv.height + "px");
+  vv.addEventListener("resize", fit);
+  fit();
+}
+
+// Registered after first paint, never before: a worker that installs during
+// boot competes with the very request it exists to make faster.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () =>
+    navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+
 (async function boot(){
   try { await reload(); render(); }
   catch(e){
