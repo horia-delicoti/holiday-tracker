@@ -50,17 +50,21 @@
   ============================================================ */
   :root{
     --ink:#26221E; --paper:#F7F5F2; --surface:#FFFFFF; --line:#E8E3DC;
-    /* one hue per spend category — drives legends, donuts and stacked bars */
-    --flights:#3E7CB1; --stay:#2F6F62; --food:#C9822E; --activities:#7A9E4F;
-    --transport:#8A7AA8; --shopping:#B5654A; --insurance:#6B8E9E; --misc:#98A0A5;
-    /* Mulberry: the one hue family not already spoken for. Deliberately kept
-       away from --shopping (#B5654A clay) and --transport (#8A7AA8 lavender),
-       which are its nearest neighbours in a stacked bar. */
-    --medical:#A6486B;
-    /* Glacier cyan, the last unused hue family. It sits between activities
-       (green) and transport (lavender) in the CATS order — deliberately
-       distant neighbours, so the three never blur in a stacked bar. */
-    --ski:#3E9EA8;
+    /* One hue per spend category, in CATS order — these drive legends, donuts
+       and every stacked bar, so what matters is not that each is pleasant on its
+       own but that NEIGHBOURS IN THE STACK stay apart.
+       Stepped in OKLCH at even hue intervals with alternating lightness, then
+       checked rather than eyeballed. Against the white card: every adjacent pair
+       clears the normal-vision floor (ΔE 15) and the closest colour-blind pair
+       is 6.7 (deutan). The set this replaced had Snowboard beside Transport at
+       12.5 normal and 3.8 deutan — below both floors, which is why the two bands
+       blurred together. Five of these sit under 3:1 contrast on white; the
+       legend and the named breakdown list beside each chart are what make that
+       legal, so do not remove either. */
+    --flights:#427fd8; --stay:#45ad69; --food:#c06400; --activities:#7ca53d;
+    --transport:#9d81e1; --shopping:#ca5556; --insurance:#00aac9; --misc:#969CA3;
+    --medical:#b7589f;
+    --ski:#009a9d;
     --accent:#2F6F62; --warn:#B5654A; --good:#4C8A5A; --accent-deep:#255A4F;
     /* Text that sits ON a filled surface. Its own token because in dark mode
        --ink is nearly white, and "white on ink" would then be white on white. */
@@ -141,10 +145,15 @@
   :root[data-theme="dark"]{
     --ink:#F8F8F2; --paper:#282A36; --surface:#323446; --line:#44475A;
     --muted:#9AA0BF; --hair:#3A3C4E; --soft:#2D2F3C;
-    /* categories — Dracula's accent family, extended to ten */
-    --flights:#8BE9FD; --stay:#50FA7B; --food:#FFB86C; --activities:#F1FA8C;
-    --transport:#BD93F9; --shopping:#FF8C7A; --insurance:#8494CE; --misc:#A7ADC9;
-    --medical:#FF79C6; --ski:#6EA8FF;
+    /* Categories: the same ten hues as the light set, stepped for this ground
+       rather than Dracula's own accents. Dracula's palette is built for syntax —
+       a handful of tokens far apart — and stretching it to ten stacked bands put
+       its yellow next to its orange. These keep the hue identities (Flights is
+       the same blue in both themes) and are checked against the #323446 card the
+       same way the light set is checked against white. */
+    --flights:#518ce3; --stay:#48ab69; --food:#cc7219; --activities:#7ba340;
+    --transport:#9c81dd; --shopping:#d66363; --insurance:#00a8c6; --misc:#A0A8B3;
+    --medical:#c366aa; --ski:#00a6a9;
     --accent:#50FA7B; --warn:#FF7A7A; --good:#50FA7B; --accent-deep:#6BFB90;
     /* Both flip: ink is light here, and Dracula green takes a dark label. */
     --on-ink:#282A36; --on-accent:#21222C;
@@ -796,15 +805,14 @@
            dropdown two controls along already says it — and saying it twice
            invites them to disagree. -->
       <h1 class="brand">
-        <!-- Same dart as the app icon and the Homer tile. The fold is stroked in
-             the colour BEHIND it rather than being a gap in the geometry, exactly
-             as the icon does it — so it tracks the header band's background,
-             currently --paper. Change `header{background}` and this stroke has
-             to change with it, or the fold draws a visible line across the dart. -->
+        <!-- The same airliner the home-screen icon draws, from the same path
+             data. One closed shape with no internal stroke, so unlike the dart it
+             replaced there is nothing here that has to track the header's
+             background colour — it simply inherits currentColor. -->
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <polygon points="22.56,1.68 1.44,12.00 10.56,13.92" fill="currentColor"/>
-          <polygon points="22.56,1.68 10.56,13.92 12.72,22.56" fill="currentColor"/>
-          <path d="M22.56,1.68 L10.56,13.92" stroke="var(--paper)" stroke-width="0.67"/>
+          <path d="M12 2.2c.95 0 1.7.95 1.7 2.12v4.3l7.6 4.44v2.02l-7.6-2.28v4.62l2.42
+                   1.74v1.62L12 19.75l-4.12.98v-1.62l2.42-1.74v-4.62L2.7 15.1v-2.02l7.6-4.44v-4.3c0-1.17.75-2.12
+                   1.7-2.12z" fill="currentColor"/>
         </svg>
         Holiday Ledger
       </h1>

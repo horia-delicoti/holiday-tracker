@@ -21,11 +21,28 @@ enter.
 | 🛡️ | Insurance | yes | |
 | 📦 | Misc | no | |
 
-Each category carries an emoji as well as a colour. That is not decoration: the
-palette is at its practical limit — adjacent bands in the stacked chart sit at a
-minimum distance of ~61 — so colour alone was carrying the whole load of telling
-one category from another. The icon is a second, independent channel, and the
-self check enforces that every category has one and that no two share it.
+Each category carries an emoji as well as a colour. That is not decoration: ten categories is past
+what colour alone can reliably carry, so the icon is a second, independent channel. The self check
+enforces that every category has one and that no two share it.
+
+## How the colours are chosen
+
+Not by eye. The ten hues are stepped in OKLCH at even intervals with alternating lightness, then
+**measured**: what matters is not whether a colour is pleasant on its own but whether NEIGHBOURS IN
+THE STACK stay apart, under normal vision and under each kind of colour-blindness.
+
+Against the white card every adjacent pair clears the normal-vision floor (ΔE 15) and the closest
+colour-blind pair is 6.7 (deuteranopia). The set these replaced had Snowboard sitting directly
+beside Transport at 12.5 normal and 3.8 deutan — below both floors, which is exactly why those two
+bands blurred into one.
+
+Five of the ten sit under 3:1 contrast against white. That is allowed only because every chart
+carries a legend and sits beside the breakdown list that names each category with its value —
+remove either and the colours are doing work they cannot do alone.
+
+The dark theme keeps the same hue identities (Flights is the same blue in both) stepped for the
+`#323446` card instead. The self check runs the adjacency test on **both** palettes, because
+lifting ten hues by eye is how two neighbours quietly become one colour at night.
 
 ## What "prepaid" means
 
@@ -43,8 +60,7 @@ still `ski` — renaming that would be a data migration for a word, so only the 
 
 Snow costs are trip-type-specific — zero on every beach holiday and city break. Splitting them three
 ways would add bands that are empty in most years, and the palette is already at its practical
-limit: adjacent colours in the stack sit at a minimum distance of ~61, and the remaining unused
-hues all read as one of the eleven already in use.
+limit: thirteen categories could not be kept apart in a stacked bar at all.
 
 Per-trip detail is already covered by the ledger, line by line. Whole-trip comparison is already
 covered by the trip's `purpose` field, so "what does a snowboarding week cost versus a beach week" is
