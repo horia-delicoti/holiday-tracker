@@ -11,14 +11,17 @@
 
    Bump VERSION to ship a new shell: the old caches are dropped on activate.
 ============================================================= */
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = "hl-shell-" + VERSION;
 const DATA = "hl-data-" + VERSION;
 
 // Everything needed to draw the app with the network down. Kept in step with
 // the files in public/ by the self check, which fails if one is missing.
+// NB "/" is deliberately NOT here. It was, and because the asset branch below
+// is cache-first, every fetch of "/" returned the copy cached on first visit —
+// for good. The document has exactly one route into this worker now, and that
+// route is network-first.
 const ASSETS = [
-  "/",
   "/index.html",
   "/chart.umd.min.js",
   "/manifest.json",
@@ -35,7 +38,23 @@ const DOC_TIMEOUT = 2500;
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(SHELL).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()),
+    caches.open(SHELL).then((c) => c.addAll(ASSETS))
+      // Warm the store too, or the first offline launch shows the app with
+      // nothing in it: on the very first visit this worker takes control only
+      // AFTER the page has already fetched /api/data, so that request never
+      // passes through here and nothing is cached until the second visit.
+      // Best-effort by design — a failure here must not fail the install and
+      // cost the app its offline mode entirely.
+      .then(() => fetch("/api/data")
+        .then((res) => {
+          if (!res.ok) return;
+          const headers = new Headers(res.headers);
+          headers.set("X-Cached-At", new Date().toISOString());
+          return res.arrayBuffer().then((body) => caches.open(DATA)
+            .then((c) => c.put("/api/data", new Response(body, { status: 200, headers }))));
+        })
+        .catch(() => {}))
+      .then(() => self.skipWaiting()),
   );
 });
 
@@ -56,9 +75,13 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== location.origin) return;
 
   if (url.pathname === "/api/data") return e.respondWith(dataFirst(req));
-  // Backups, exports, rate refreshes: all need the server by definition.
+  // Backups, exports, rate refreshes, the version probe: all need the server.
   if (url.pathname.startsWith("/api/")) return;
-  if (req.mode === "navigate") return e.respondWith(docFirst(req));
+  // The document, however it is asked for. Matching on req.mode alone missed
+  // a plain fetch("/") — which is how the app checks itself — and handed it the
+  // cache-first branch, so the page could never see that it had gone stale.
+  if (req.mode === "navigate" || url.pathname === "/" || url.pathname === "/index.html")
+    return e.respondWith(docFirst(req));
   e.respondWith(assetFirst(req));
 });
 

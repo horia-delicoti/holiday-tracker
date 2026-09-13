@@ -6,6 +6,13 @@
 # is immutable, which is the whole point of pinning it in Ansible.
 FROM node:24-alpine
 
+# The version is stamped in at build time from the git tag that produced the
+# image — never from a file anyone has to remember to edit. package.json said
+# 1.0.0 for three releases, which is exactly the drift this avoids. A local
+# `docker build` with no arg says "dev", which is also the truth.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 # App directory inside the container
 WORKDIR /app
 

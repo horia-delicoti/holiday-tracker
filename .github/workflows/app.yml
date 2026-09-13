@@ -143,6 +143,11 @@ jobs:
           context: ./app.web
           platforms: linux/amd64,linux/arm64
           push: true
+          # github.ref_name is the tag being built (v1.3.1). The app reports
+          # this back, so "what is running?" is answered by the image itself
+          # rather than by whatever anyone last typed into Ansible.
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

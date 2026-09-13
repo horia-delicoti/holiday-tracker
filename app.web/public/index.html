@@ -38,6 +38,9 @@
      paper background makes the whole status bar invisible. -->
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Holidays" />
+<!-- Replaced by the server as this file is sent. A cached copy keeps the value
+     it was served with, which is how it can tell it has gone stale. -->
+<meta name="app-version" content="__APP_VERSION__" />
 <!-- Chart.js is vendored locally (public/chart.umd.min.js) so the page works
      on the rpi5 without reaching out to any external CDN. The app makes no
      outbound requests at all — FX rates are entered by hand, not fetched. -->
@@ -567,6 +570,18 @@
        font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.55;display:none}
   .offbar.show{display:block}
   .offbar b{color:var(--ink);font-weight:600}
+  /* A newer build is on the server than the one on screen. Accent, not warning:
+     nothing is wrong, there is simply something newer, and one tap fixes it. */
+  .updbar{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;
+       padding:10px 14px;font-size:13px;color:var(--ink);margin-bottom:16px;line-height:1.55;
+       display:none;align-items:center;gap:12px;flex-wrap:wrap}
+  .updbar.show{display:flex}
+  .updbar .grow{flex:1;min-width:180px}
+  .updbar b{font-weight:600}
+  .mver{display:flex;align-items:center;gap:10px;padding:7px 12px 9px;font-size:12.5px;color:var(--muted)}
+  .mver .v{font-family:var(--mono)}
+  .mver button{margin-left:auto}
+  @media(max-width:700px){ .mver{font-size:14px;padding:10px 12px 12px} }
   /* budget-vs-actual bar rendered inside a cell */
   .bar{height:7px;border-radius:4px;background:var(--hair);position:relative;overflow:hidden;min-width:60px}
   .bar > i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--accent)}
@@ -848,6 +863,9 @@
             <a class="mrow" id="saveLink" href="/api/export" download>⬇ Save a backup</a>
             <button class="mrow" id="loadBtn">⬆ Load a backup</button>
             <button class="mrow" id="restoreBtn">⟲ Restore a snapshot</button>
+            <div class="msep"></div>
+            <div class="mver" data-ver><span class="v"></span>
+              <button class="btn" data-checkupd>Check for updates</button></div>
           </div>
         </div>
         <button class="btn primary" id="newTripBtn">+ New trip</button>
@@ -874,6 +892,7 @@
     <div class="convbar" id="convBar"></div>
     <div class="warnbar" id="staleBar"></div>
     <div class="offbar" id="offBar"></div>
+    <div class="updbar" id="updBar"></div>
     <div id="tabs"></div>      <!-- year pills (year view only) -->
 
     <!-- =========================================================
@@ -1124,6 +1143,9 @@
     <button class="sheetrow" data-do="saveLink"><span class="ico">⬇</span>Save a backup</button>
     <button class="sheetrow" data-do="loadBtn"><span class="ico">⬆</span>Load a backup</button>
     <button class="sheetrow" data-do="restoreBtn"><span class="ico">⟲</span>Restore a snapshot</button>
+    <div class="sheetsep"></div>
+    <div class="mver" data-ver><span class="v"></span>
+      <button class="btn" data-checkupd>Check for updates</button></div>
     <button class="btn sheetcancel" data-close="menuSheet">Cancel</button>
   </div>
 </div>
@@ -3039,6 +3061,74 @@ document.addEventListener("keydown", (e) => {
   ["tripCurTitle",  KICON.coins],
 ].forEach(([id, d]) => document.getElementById(id).insertAdjacentHTML("afterbegin", kicon(d, "h2ico")));
 
+/* =============================================================
+   Which build is this, and is it the current one?
+
+   A cached app is the only kind that can be confidently wrong about itself:
+   it renders, it looks finished, and nothing on screen says it is three
+   releases behind. The page is stamped with its own version as the server
+   sends it, so it can ask the server what the current one is and notice the
+   difference. Without this the only cure was clearing site data by hand,
+   which for a home-screen app means deleting and re-adding it.
+============================================================= */
+const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || "dev";
+let serverVersion = null;
+
+function drawVersion(){
+  const stale = serverVersion && serverVersion !== APP_VERSION;
+  document.querySelectorAll("[data-ver] .v").forEach(el =>
+    el.textContent = stale ? `${APP_VERSION} → ${serverVersion} available` : `Version ${APP_VERSION}`);
+  const bar = document.getElementById("updBar");
+  bar.classList.toggle("show", !!stale);
+  if (stale) bar.innerHTML =
+    `<span class="grow"><b>Version ${esc(serverVersion)} is ready.</b> You are looking at ${esc(APP_VERSION)},
+      kept from an earlier visit.</span><button class="btn primary" data-doupd>Update now</button>`;
+}
+
+// no-store, and outside the worker's remit, so this is always a real answer
+// from the real server rather than the one it gave the last time.
+async function checkVersion(){
+  try {
+    const r = await fetch("/api/version", { cache:"no-store" });
+    if (!r.ok) return;
+    serverVersion = (await r.json()).version || null;
+  } catch (_) { return; }      // offline: what is on screen is the truth
+  drawVersion();
+}
+
+// Clears everything the worker is holding and starts again. Deliberately
+// thorough rather than clever: the one thing this must never do is leave you
+// looking at the old copy after telling you it worked.
+//
+// The worker is UNREGISTERED, not merely updated. An update leaves the old one
+// controlling this page, so one subtle mistake in its routing — and there was
+// one — means the reload is served by the very thing you are trying to escape.
+// Registration happens again on the next load, so offline survives one refresh.
+async function updateApp(btn){
+  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
+  try {
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+  } catch (_) {}
+  // A cache-busting query cannot be served by anything holding the old copy.
+  location.replace(location.pathname + "?u=" + Date.now());
+}
+document.addEventListener("click", (e) => {
+  const upd = e.target.closest("[data-doupd],[data-checkupd]");
+  if (!upd) return;
+  if (upd.hasAttribute("data-doupd")) return updateApp(upd);
+  // Manual check: say something either way, so the button never looks dead.
+  upd.disabled = true; upd.textContent = "Checking…";
+  checkVersion().then(() => {
+    if (serverVersion && serverVersion !== APP_VERSION) return updateApp(upd);
+    upd.disabled = false; upd.textContent = serverVersion ? "Up to date" : "No connection";
+    setTimeout(() => { upd.textContent = "Check for updates"; }, 4000);
+  });
+});
+
 // An installed app has no address bar, no reload and — since the bounce is
 // disabled — no pull-to-refresh, so a session resumed from the app switcher
 // would show whatever it loaded whenever it last started. With the worker
@@ -3051,6 +3141,7 @@ async function refresh(){
   // error: what is already on screen stays, and the offline strip explains it.
   try { await reload(); render(); } catch(_) {}
   finally { refreshing = false; }
+  checkVersion();          // a resumed app is exactly when a new build appears
 }
 document.addEventListener("visibilitychange", refresh);
 window.addEventListener("online", refresh);
@@ -3163,6 +3254,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () =>
     navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
+
+drawVersion();
+checkVersion();
 
 (async function boot(){
   try { await reload(); render(); }

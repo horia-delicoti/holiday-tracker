@@ -18,6 +18,9 @@ const crypto = require("crypto"); // for generating record ids
 const PORT = process.env.PORT || 8100; // app port (override via env)
 const ROOT = __dirname; // project root
 const PUBLIC_DIR = path.join(ROOT, "public"); // static assets (SPA)
+// Stamped in by the Dockerfile from the git tag that built the image, so it
+// cannot disagree with what is actually running. "dev" when run from source.
+const APP_VERSION = process.env.APP_VERSION || "dev";
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data"); // persistent data dir
 const DATA_FILE = path.join(DATA_DIR, "data.json"); // main data store
 const BACKUP_DIR = path.join(DATA_DIR, "backups"); // timestamped backups
@@ -340,6 +343,10 @@ function serveStatic(req, res) {
     if (err) return sendJSON(res, 404, { error: "not found" }); // 404
     const ext = path.extname(filePath); // pick mime
     const headers = { "Content-Type": MIME[ext] || "application/octet-stream" };
+    // The page is told which build it is as it leaves, so a copy of it sitting
+    // in a service worker cache still knows — that is what lets it notice it
+    // has gone stale instead of looking current forever.
+    if (ext === ".html") data = Buffer.from(String(data).replace(/__APP_VERSION__/g, APP_VERSION));
     // index.html carries the entire app (markup, styles and every line of JS),
     // so a browser-cached copy after a redeploy means the UI and the API can
     // disagree about what fields exist. Revalidate it every time; the vendored
@@ -369,6 +376,14 @@ const server = http.createServer(async (req, res) => {
       const parts = url.split("/"); // ["", "api", "trips", ...]
 
       // GET /api/data  -> whole store
+      // GET /api/version -> what this container actually is.
+      // Deliberately tiny and no-store: the page fetches it to find out whether
+      // the copy of itself it is running is the one the server has, which is
+      // the one question a cached app cannot answer about itself.
+      if (url === "/api/version" && req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        return res.end(JSON.stringify({ version: APP_VERSION }));
+      }
       if (url === "/api/data" && req.method === "GET") {
         return sendJSON(res, 200, readData());
       }

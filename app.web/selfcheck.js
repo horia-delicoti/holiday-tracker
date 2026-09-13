@@ -187,6 +187,38 @@ ok("the worker is not cached", /rel === "\/sw\.js".*no-cache/s.test(srvSrc),
    "a stale worker pins an old app on the device");
 ok("writes are never served from cache", /req\.method !== "GET"/.test(sw),
    "a queued write would report money as saved that was not");
+// "/" used to be pre-cached AND handled by the cache-first branch, so every
+// fetch of it returned the copy stored on the first visit — for good. The page
+// checks itself by fetching "/", so it could never see it had gone stale.
+ok("the document is always network-first",
+   /req\.mode === "navigate" \|\| url\.pathname === "\/" \|\| url\.pathname === "\/index\.html"/.test(sw)
+     && !/^\s*"\/",\s*$/m.test(sw),
+   "and \"/\" is not pre-cached, or it can never go stale");
+// On a first visit the worker takes control only after the page has fetched the
+// store, so that request never reaches it: without warming, the first offline
+// launch shows the app completely empty.
+ok("the store is warmed on install", /fetch\("\/api\/data"\)/.test(sw),
+   "or offline works only from the second visit onwards");
+
+// --- knowing which build this is ----------------------------------------
+// The version is stamped into the page as it is served, so a cached copy keeps
+// the value it was served with and can tell it has gone stale. Every piece of
+// this chain is load-bearing and none of it is visible in a browser that has
+// never cached anything.
+ok("the page is stamped with its version",
+   /name="app-version" content="__APP_VERSION__"/.test(html)
+     && /__APP_VERSION__/.test(srvSrc) && /ext === "\.html"/.test(srvSrc),
+   "placeholder in the page, substitution in the server");
+ok("the version comes from the image, not a file",
+   /ARG APP_VERSION/.test(fs.readFileSync(path.join(DIR, "Dockerfile"), "utf8")) &&
+   /process\.env\.APP_VERSION/.test(srvSrc),
+   "package.json said 1.0.0 for three releases");
+ok("the version probe is never cached", /"\/api\/version"[\s\S]{0,200}no-store/.test(srvSrc),
+   "a cached answer about staleness is worthless");
+ok("there is a way out of a stale cache",
+   /getRegistrations\(\)[\s\S]{0,200}unregister\(\)/.test(js) && /caches\.delete/.test(js)
+     && (html.match(/<button class="btn" data-checkupd>/g) || []).length === 2,
+   "unregister and clear, offered in both shells");
 
 // --- launch colours ------------------------------------------------------
 // iOS paints background_color before the app draws and tints the status bar

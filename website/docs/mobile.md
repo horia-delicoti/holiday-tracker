@@ -12,8 +12,8 @@ log in each time.
 
 It is the **same app**, not a second one. One codebase, one deployment, one data store. Updating
 the deployment updates the phone and the desktop together, and because the page is served
-`Cache-Control: no-cache` the phone picks up changes on its next launch. No App Store, no review,
-no developer account.
+`Cache-Control: no-cache` and fetched network-first the phone picks up changes on its next launch
+— with a visible way out if it ever does not. No App Store, no review, no developer account.
 
 ## Offline
 
@@ -38,6 +38,39 @@ Three things are worth knowing:
   on activate. The self check verifies that every file the worker pre-caches actually exists, since
   `addAll()` is atomic — one wrong path and the install rejects, leaving no offline mode and nothing
   on screen to say so.
+
+## Which version is running, and how to get out of a stale one
+
+Settings names the build you are looking at — **Version 1.3.1**, in the desktop menu and in the
+phone action sheet — next to a **Check for updates** button.
+
+The number is not typed anywhere. The release tag becomes a Docker build argument
+(`--build-arg APP_VERSION=${{ github.ref_name }}`), the image carries it as an environment variable,
+and the server substitutes it into `__APP_VERSION__` in the page as it is served. So the version on
+screen is the version of the image that answered, and it cannot drift from it the way a hand-edited
+`package.json` can — that one said `1.0.0` through three releases.
+
+The app asks `/api/version` (served `no-store`, because a cached answer about staleness is worthless)
+on load and on every foreground re-read. If the server reports a newer build than the page was
+stamped with, a bar appears across the top:
+
+> Version 1.4.0 is ready. You are looking at 1.3.1, kept from an earlier visit. **Update now**
+
+**Update now** is the escape hatch, and it is deliberately heavy-handed: it unregisters every service
+worker, deletes every cache, and reloads with a cache-busting query. There is no reload button in an
+installed PWA and no pull-to-refresh, so "clear it and start again" has to exist inside the app or it
+does not exist at all.
+
+Two bugs made that necessary, both only visible once the worker was actually tested rather than read:
+
+- **`/` was pre-cached *and* served cache-first.** A first visit stored that copy of the page and
+  every launch afterwards got it back, forever — the version check could never see a new build, and
+  an update button would have reloaded straight into the same stale copy while hiding the banner,
+  which is worse than no button. `/` is gone from `ASSETS`, and the document is network-first
+  whether the request arrives as a navigation, `/`, or `/index.html`.
+- **The first offline launch was empty.** The worker takes control only after the page has already
+  fetched `/api/data`, so on a first visit nothing was ever written to the data cache. The install
+  step now warms it.
 
 ## Launch screen
 
