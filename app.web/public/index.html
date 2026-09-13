@@ -476,6 +476,7 @@
   .tcard .tc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;
        margin-top:2px;flex-wrap:wrap}
   .tcard .tc-amt{font-family:var(--mono);font-size:19px}
+  .tcard .tc-est{font-family:var(--mono);font-size:11px;color:var(--amber-deep)}
   .tripmain{display:grid;grid-template-columns:5fr 3fr;gap:18px;margin-top:20px;align-items:start}
   @media(max-width:900px){.tripmain{grid-template-columns:1fr}}
   .full{grid-column:1/-1}
@@ -786,7 +787,12 @@
   .snaprow .when{font-family:var(--mono)}
   .snaprow .sz{color:var(--muted);font-size:12px}
   /* currency rows in settings */
-  .currow{display:grid;grid-template-columns:80px 70px 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+  .currow{display:grid;grid-template-columns:80px 70px 1fr auto;gap:6px 8px;align-items:center;margin-bottom:10px}
+  .currow .cc{background:var(--soft);color:var(--muted)}
+  /* Its own row under the inputs: it is a sentence about the rate box above it,
+     and squeezing it into the grid would cost the rate box its width. */
+  .curhint{grid-column:1/-1;font-size:11px;color:var(--muted);margin-top:-2px}
+  .curhint.auto{color:var(--accent)}
   /* ---------- first-run / empty state ---------- */
   #firstRun{text-align:center;padding:44px 20px}
   #firstRun h2{font-size:24px}
@@ -1218,14 +1224,17 @@
       restates a past trip.</div>
     <div class="err" id="setErr"></div>
     <div id="curRows"></div>
-    <button class="btn" id="addCurBtn" style="margin-top:6px">+ Add currency</button>
+    <label for="addCur" style="margin-top:10px">Add currency</label>
+    <select id="addCur" class="mono"></select>
     <div class="fgrid" style="margin-top:14px">
       <div><label for="setBase">Base currency</label><select id="setBase" class="mono"></select>
         <div class="note" id="baseNote" style="margin-top:5px"></div></div>
       <div><label for="setTrav">Default travellers</label><input id="setTrav" class="mono" type="number" inputmode="numeric" min="1" /></div>
     </div>
-    <div class="note">Nothing here is fetched from the internet — this app makes no outbound
-      requests. Update rates by hand when they drift enough to matter.</div>
+    <div class="note">The currency list comes from your device, not the internet — every name
+      and symbol above is one your browser already knows, so this works offline. Rates are yours:
+      <b>Update rates online</b> fills the ones the European Central Bank publishes and is the only
+      outbound request this app ever makes; the rest you type when they drift enough to matter.</div>
     <div class="modal-actions">
       <button class="btn" data-close="setModal">Cancel</button>
       <button class="btn primary" id="setSave">Save</button>
@@ -2029,16 +2038,15 @@ function renderOverview(S){
   const byDest = {};
   past.forEach(t => {
     const key = t.country || t.name;
-    const d = byDest[key] || (byDest[key] = { trips:0, nights:0, total:0, pd:0, last:"" });
+    const d = byDest[key] || (byDest[key] = { trips:0, nights:0, total:0, pd:0 });
     d.trips++; d.nights += t.nights; d.total += t.actual; d.pd += t.personDays;
-    if (t.start.slice(0,4) > d.last) d.last = t.start.slice(0,4);
   });
   const rows = Object.entries(byDest).map(([k,v]) => ({ country:k, ...v, cpppd: v.pd ? v.total/v.pd : 0 }))
                      .sort((a,b)=>b.cpppd-a.cpppd);
   const median = rows.length ? rows[Math.floor(rows.length/2)].cpppd : 0;
   document.getElementById("destTable").innerHTML = rows.length
     ? `<table class="reflow"><thead><tr><th>Country</th><th>Trips</th><th>Nights</th><th>Total</th><th>/pp/day</th></tr></thead>
-       <tbody>${rows.map(r=>`<tr><td>${esc(r.country)} <span class="muted" style="font-size:11px">${r.last}</span></td>
+       <tbody>${rows.map(r=>`<tr><td>${esc(r.country)}</td>
          <td data-l="Trips">${r.trips}</td><td data-l="Nights">${r.nights}</td><td data-l="Total">${money(r.total)}</td>
          <td data-l="Per person / day" style="color:${r.cpppd>median?c("--warn"):c("--good")}">${money(r.cpppd)}</td></tr>`).join("")}
        </tbody></table>`
@@ -2372,8 +2380,16 @@ function tripCard(t){
         : ""}${t.country && t.purpose ? " · " : ""}${
         t.purpose ? `<span class="tc-purpose">${esc(t.purpose)}</span>` : ""}</span>
       <span class="tc-dates">${dateRange(t.start, t.end)} \u00b7 ${t.nights} nights</span>
+      <!-- The card shows PROJECTED, like the trip page, so it has to say so in
+           the same breath — otherwise a trip that has not happened yet shows a
+           confident figure that is entirely a guess. Two different signals: a
+           finished trip still holding guesses is a problem and keeps the loud
+           pill; anything else is just a plan, and gets the quiet split. -->
       <span class="tc-foot"><span class="tc-amt">${money(t.projected)}</span>${
-        t.stale ? `<span class="pill est">${t.estCount} estimated</span>` : ""}</span>
+        t.stale ? `<span class="pill est">${t.estCount} estimated</span>`
+        : t.planned ? `<span class="tc-est">${t.actual
+            ? `${money(t.actual)} paid + ${money(t.planned)} est`
+            : "all estimated"}</span>` : ""}</span>
     </button>`;
 }
 
@@ -2833,18 +2849,70 @@ document.getElementById("delTripBtn").onclick = () => {
 /* =============================================================
    SECTION 11 — currency settings modal
 ============================================================= */
+/* =============================================================
+   Currencies — chosen from a list, never typed.
+
+   The browser already knows every ISO currency with its name and its symbol,
+   so none of this is bundled and none of it is fetched: Intl is platform data
+   and works with the aeroplane mode on, which is the only reason a picker is
+   allowed in an app that makes no outbound requests.
+============================================================= */
+const CUR_FALLBACK = ["AUD","BGN","BRL","CAD","CHF","CNY","CZK","DKK","EUR","GBP","HKD","HUF","IDR",
+  "ILS","INR","ISK","JPY","KRW","MXN","MYR","NOK","NZD","PHP","PLN","RON","SEK","SGD","THB","TRY","USD","ZAR"];
+// The ECB reference set, which is exactly what Frankfurter can return — so the
+// only currencies "Update rates online" can fill in. Anything outside it needs
+// a rate typed by hand, and the row says so rather than leaving you to notice
+// that the button never touched it.
+const ECB = new Set(CUR_FALLBACK);
+const CUR_CODES = (() => {
+  try { const v = Intl.supportedValuesOf("currency"); if (v && v.length) return v; } catch (_) {}
+  return CUR_FALLBACK;                       // pre-2022 browsers: the useful ones
+})();
+const curName = (code) => { try { return new Intl.DisplayNames([navigator.language || "en"], { type:"currency" }).of(code) || code; }
+                            catch (_) { return code; } };
+// narrowSymbol gives "£" rather than "GBP"; it falls back to the code itself
+// for currencies that have no symbol of their own, which is the right answer.
+const curSymbol = (code) => {
+  try {
+    return new Intl.NumberFormat(navigator.language || "en",
+      { style:"currency", currency:code, currencyDisplay:"narrowSymbol" })
+      .formatToParts(0).find(p => p.type === "currency").value;
+  } catch (_) { return code; }
+};
+
 function drawCurRows(list){
-  document.getElementById("curRows").innerHTML = list.map((x,i) => `
+  const base = (document.getElementById("setBase") || {}).value || BASE();
+  document.getElementById("curRows").innerHTML = list.map((x,i) => {
+    const isBase = x.code === base;
+    return `
     <div class="currow" data-i="${i}">
-      <input class="mono cc" value="${esc(x.code)}" placeholder="EUR" maxlength="8" />
-      <input class="cs" value="${esc(x.symbol)}" placeholder="€" maxlength="4" />
-      <input class="mono cr" type="number" inputmode="decimal" step="0.0001" value="${x.rate}" placeholder="0.85" />
-      <button class="trash cdel" title="Remove">✕</button>
-    </div>`).join("");
+      <input class="mono cc" value="${esc(x.code)}" readonly aria-label="Currency code" />
+      <input class="cs" value="${esc(x.symbol)}" maxlength="4" aria-label="Symbol for ${esc(x.code)}" />
+      <input class="mono cr" type="number" inputmode="decimal" step="0.0001" value="${x.rate}"
+             placeholder="0.0000" aria-label="Rate for ${esc(x.code)}" />
+      <button class="trash cdel" title="Remove ${esc(x.code)}">✕</button>
+      <div class="curhint${isBase || ECB.has(x.code) ? " auto" : ""}">${
+        isBase ? "base currency — every stored figure is in this"
+        : ECB.has(x.code) ? "↻ rate fills itself from Update rates online"
+        : "rate typed by hand — the ECB does not publish this one"}</div>
+    </div>`; }).join("");
   document.querySelectorAll("#curRows .cdel").forEach(b => b.onclick = () => {
     const cur = readCurRows(); cur.splice(+b.parentElement.dataset.i, 1);
-    drawCurRows(cur); refreshBaseSelect(cur);
+    drawCurRows(cur); refreshBaseSelect(cur); drawCurPicker(cur);
   });
+}
+
+// Grouped so the ones whose rates look after themselves come first; the ones
+// already in the table are left out entirely rather than offered twice.
+function drawCurPicker(list){
+  const have = new Set(list.map(x => x.code));
+  const opt = (c) => `<option value="${c}">${c} — ${esc(curName(c))} (${esc(curSymbol(c))})</option>`;
+  const online = CUR_CODES.filter(c => ECB.has(c) && !have.has(c));
+  const rest   = CUR_CODES.filter(c => !ECB.has(c) && !have.has(c));
+  document.getElementById("addCur").innerHTML =
+    `<option value="">Choose a currency…</option>` +
+    (online.length ? `<optgroup label="Rates update online">${online.map(opt).join("")}</optgroup>` : "") +
+    (rest.length   ? `<optgroup label="All currencies">${rest.map(opt).join("")}</optgroup>` : "");
 }
 function readCurRows(){
   return [...document.querySelectorAll("#curRows .currow")].map(r => ({
@@ -2861,7 +2929,7 @@ function refreshBaseSelect(list){
 }
 document.getElementById("setBtn").onclick = () => {
   document.getElementById("setErr").classList.remove("show");
-  drawCurRows(CURS()); refreshBaseSelect(CURS());
+  refreshBaseSelect(CURS()); drawCurRows(CURS()); drawCurPicker(CURS());
   // Base is the currency every amountBase on disk is denominated in. Changing it
   // once trips exist would relabel every historical figure without converting a
   // single one — £100 silently becoming €100. It is therefore locked as soon as
@@ -2877,9 +2945,16 @@ document.getElementById("setBtn").onclick = () => {
   document.getElementById("setTrav").value = DEF_TRAVELLERS();
   document.getElementById("setModal").classList.add("open");
 };
-document.getElementById("addCurBtn").onclick = () => {
-  const cur = readCurRows(); cur.push({ code:"", symbol:"", rate:1 });
-  drawCurRows(cur); refreshBaseSelect(cur);
+document.getElementById("addCur").onchange = (e) => {
+  const code = e.target.value;
+  if (!code) return;
+  const cur = readCurRows();
+  if (!cur.some(x => x.code === code)) {
+    // Symbol is pre-filled, not fixed: "lei" reads better than "RON" to the
+    // person who wrote the line, and only they know which they want.
+    cur.push({ code, symbol: curSymbol(code), rate: 0 });
+  }
+  drawCurRows(cur); refreshBaseSelect(cur); drawCurPicker(cur);
 };
 document.getElementById("setSave").onclick = async () => {
   try {
