@@ -710,6 +710,7 @@
      source, so it stays fixed even in Safari where user-scalable=no is ignored. */
   @media(max-width:700px){
     input,select,textarea{font-size:16px;padding:9px 10px}
+    input[type=date]{min-height:calc(1.15em + 20px)}   /* 2×9 padding + 2 border; 1.15em is the line box the other fields get */
   }
   input.mono,select.mono{font-family:var(--mono)}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
@@ -723,7 +724,18 @@
      Chrome never showed it: there, the same markup measures 157px in a 157px
      column. The reset is what makes the box obey the column everywhere. */
   input[type=date]{-webkit-appearance:none;appearance:none;
-       width:100%;min-width:0;max-width:100%;display:block}
+       width:100%;min-width:0;max-width:100%;display:block;
+       /* content + the padding and border above, because box-sizing is border-box.
+          Without a floor an EMPTY date field has no value text to give the box a
+          line, and with the appearance reset there is nothing else holding it
+          open: it collapses to a thin slot beside full-height fields, which is
+          how New trip looked before a date was picked. */
+       min-height:calc(1.15em + 16px)}
+  /* The shadow element that carries the value. iOS gives it no line box when
+     empty (the collapse above) and right-aligns the date inside the field for
+     no good reason, so it is pinned open and pushed back to the left. */
+  input[type=date]::-webkit-date-and-time-value{min-height:1.15em;text-align:left}
+  input[type=date]::-webkit-datetime-edit{min-height:1.15em}
   .ledgerhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
   .ledgerhead h2{margin:0}
   .pill.purp{margin-left:4px;white-space:nowrap;font-weight:700}

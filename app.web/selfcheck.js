@@ -360,6 +360,14 @@ ok("a date field obeys its column",
 ok("a dialog scrolls up and down, never sideways",
    /\.modal\{[^}]*overflow-x:hidden/.test(flat),
    "too wide should be clipped and obvious, not draggable");
+// An empty date field has no value text, and with the appearance reset above
+// there is nothing else holding the box open: on iOS it collapses to a thin
+// slot beside full-height fields, which is what New trip looked like before a
+// date was picked.
+ok("an empty date field keeps its height",
+   /input\[type=date\]\{[^}]*min-height:calc/.test(flat)
+     && /::-webkit-date-and-time-value\{min-height/.test(flat),
+   "or New trip shows two thin slots until a date is chosen");
 ok("the two date pickers fence each other in",
    /function syncTripDates/.test(js) && /b\.min = a\.value/.test(js) && /a\.max = b\.value/.test(js),
    "impossible days are greyed out rather than refused after the fact");
