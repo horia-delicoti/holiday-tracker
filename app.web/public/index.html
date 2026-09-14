@@ -30,7 +30,11 @@
   document.querySelector('meta[name="theme-color"]').content = dark ? "#282A36" : "#F7F5F2";
 })();
 </script>
-<link rel="apple-touch-icon" href="/icon-180.png" />
+<!-- The -v2 in the file name is load-bearing. Safari keeps home-screen icons
+     in its own store, keyed by URL and never revalidated: the plane replaced
+     the H here months before a new shortcut still came out as an H. A changed
+     icon therefore needs a changed file name, or it does not exist. -->
+<link rel="apple-touch-icon" href="/icon-180-v2.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <!-- default, not black-translucent: translucent draws the clock, battery and
@@ -570,6 +574,7 @@
        font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.55;display:none}
   .offbar.show{display:block}
   .offbar b{color:var(--ink);font-weight:600}
+  .offbar .btn{margin-top:9px}   /* Sign in reads as an action, not as the last word of a sentence */
   /* A newer build is on the server than the one on screen. Accent, not warning:
      nothing is wrong, there is simply something newer, and one tap fixes it. */
   .updbar{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;
@@ -593,11 +598,15 @@
   .dayhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
        color:var(--muted);padding:12px 0 6px;border-bottom:1px solid var(--hair);margin-top:4px}
   .dayhead:first-child{margin-top:0;padding-top:2px}
-  /* Two-line rows: name over category, amount over as-paid, then the two
-     actions. icon · body · amounts · edit · delete. The body is minmax(0,1fr)
-     so the note can ellipsis rather than push the row wide. */
-  .lrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto auto auto;
-        grid-template-areas:"ico body amts edit del";
+  /* Two-line rows: name over category, amount over as-paid, then ONE action.
+     icon · body · amounts · edit. The body is minmax(0,1fr) so the note can
+     ellipsis rather than push the row wide.
+     Delete used to sit here too, a thumb's width from edit, and it is the one
+     action in the app that cannot be taken back from the row itself. It now
+     lives inside the edit dialog, where you have already said which line you
+     mean. */
+  .lrow{display:grid;grid-template-columns:32px minmax(0,1fr) auto auto;
+        grid-template-areas:"ico body amts edit";
         gap:0 10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
   .lrow > .catico{grid-area:ico;width:30px;height:30px;font-size:15px}
   .lrow .body{grid-area:body;min-width:0}
@@ -608,15 +617,13 @@
   .lrow .amt{font-family:var(--mono);white-space:nowrap;display:block}
   .lrow .orig{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;display:block;margin-top:2px}
   .lrow .pencil{grid-area:edit}
-  .lrow .trash{grid-area:del}
   /* Phones: the row is already two lines and carries no date, so nothing has
      to fold — only the tap targets grow. */
   @media(max-width:700px){
-    /* Apple's minimum is 44x44 and these were 21x24 — two small targets side
-       by side, one of them destructive, on the screen used most while away.
-       The glyphs keep their size; only the box around them grows, and the body
-       column gives up the width because it can ellipsis and they cannot. */
-    .lrow .pencil,.lrow .trash{font-size:16px;padding:0;width:36px;height:44px;
+    /* Apple's minimum is 44x44 and this was 21x24. With delete gone from the
+       row there is width for the full square without the note column paying
+       for it — it was squeezed to 36 wide while two targets shared the space. */
+    .lrow .pencil{font-size:16px;padding:0;width:44px;height:44px;
          display:inline-flex;align-items:center;justify-content:center}
     .ledger{max-height:none}
   }
@@ -788,7 +795,10 @@
   .modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
   .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
   .fgrid .wide{grid-column:1/-1}
-  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+  /* Delete sits at the far end from Save, so the destructive button is never
+     the one your thumb lands on by momentum after typing an amount. */
+  #niDel{margin-right:auto}
   .modalhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
   .modalhead h3{margin:0 0 4px}
   .modal .note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
@@ -1207,6 +1217,10 @@
       </div>
     </div>
     <div class="modal-actions">
+      <!-- Deleting a line starts here, not on the ledger row, and asks in
+           place rather than through a system confirm(). Hidden when adding:
+           there is nothing to delete yet. -->
+      <button class="btn danger" id="niDel">Delete line</button>
       <button class="btn" data-close="itemModal">Cancel</button>
       <button class="btn" id="niSaveMore" title="Shift+Enter">Save &amp; add another</button>
       <button class="btn primary" id="niSave" title="Enter">Save</button>
@@ -1343,6 +1357,25 @@ let DATA = { settings:{ baseCurrency:"GBP", currencies:[] }, trips:[] };
 // the only thing standing between "your trips" and "your trips as of Tuesday".
 let servedFrom = { cached:false, at:null };
 
+/* Why the server could not be reached, which is not one answer but three.
+   This app sits behind an auth gate (Caddy + Authelia). An expired session is
+   not a dead server: every request is answered with a redirect to a login page
+   on ANOTHER origin, and a fetch cannot read that — it fails in exactly the
+   way a pulled cable does. So the app said "Offline" with the container up and
+   healthy, and offered no way back in.
+
+   One request tells them apart. redirect:"manual" turns that redirect into an
+   answer (an opaque one, type "opaqueredirect") instead of an error, so a gate
+   in front of the app is visible where a dead network still throws. */
+let connState = "online";               // "online" | "signedout" | "offline"
+
+async function diagnose(){
+  try {
+    const r = await fetch("/api/version", { cache:"no-store", redirect:"manual" });
+    return (r.type === "opaqueredirect" || r.status === 401 || r.status === 403) ? "signedout" : "online";
+  } catch(_) { return "offline"; }
+}
+
 async function api(method, path, body){
   let r;
   try {
@@ -1355,10 +1388,15 @@ async function api(method, path, body){
     // Only GETs are ever served from the cache, so a throw here on a write is
     // exactly what it looks like: the line was not saved. Say so in those words
     // rather than surfacing "Failed to fetch" — with the original kept as the
-    // cause, so the console still has the real reason.
-    throw new Error(method === "GET"
-      ? "No connection to the server."
-      : "No connection to the server — nothing was saved.", { cause: netErr });
+    // cause, so the console still has the real reason. One extra request, only
+    // ever on the failing path, buys the difference between "no connection"
+    // and "sign in again" — which are opposite instructions to the person.
+    connState = await diagnose();
+    const why = connState === "signedout"
+      ? "Your session has expired — sign in again."
+      : "No connection to the server.";
+    throw new Error(method === "GET" ? why
+      : why.replace(/\.$/, "") + " Nothing was saved.", { cause: netErr });
   }
   if (method === "GET" && path === "/api/data")
     servedFrom = { cached: r.headers.get("X-From-Cache") === "1", at: r.headers.get("X-Cached-At") };
@@ -1367,7 +1405,12 @@ async function api(method, path, body){
   if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
   return j;
 }
-async function reload(){ DATA = await api("GET","/api/data"); }
+async function reload(){
+  DATA = await api("GET","/api/data");
+  // A cached store proves only that the server did not answer. Ask why, once,
+  // so the strip below can name the real problem instead of guessing offline.
+  connState = servedFrom.cached ? await diagnose() : "online";
+}
 
 /* =============================================================
    SECTION 3 — money & currency helpers
@@ -1679,9 +1722,17 @@ function render(){
   off.classList.toggle("show", servedFrom.cached);
   if (servedFrom.cached) {
     const when = servedFrom.at ? new Date(servedFrom.at) : null;
-    off.innerHTML = `<b>Offline</b> — showing the trips as they were${when
-      ? ` at ${when.toLocaleString("en-GB",{ weekday:"short", hour:"2-digit", minute:"2-digit" })}` : ""}.
-      Everything here still works; adding or changing a line needs the server.`;
+    const as = `the trips as they were${when
+      ? ` at ${when.toLocaleString("en-GB",{ weekday:"short", hour:"2-digit", minute:"2-digit" })}` : ""}`;
+    // Same cached store, two completely different instructions to the person:
+    // one says wait for a signal, the other says sign in. Saying the first when
+    // the second is true is why this strip was worth splitting in two.
+    off.innerHTML = connState === "signedout"
+      ? `<b>Signed out</b> — your session expired, so these are ${as}.
+         Reading still works; adding or changing a line needs you signed in.
+         <button class="btn primary" data-signin>Sign in</button>`
+      : `<b>Offline</b> — showing ${as}.
+         Everything here still works; adding or changing a line needs the server.`;
   }
 
   const stale = S.filter(t => t.stale);
@@ -2544,7 +2595,6 @@ function renderTrip(S){
        <div class="amts"><span class="amt${it.estimated?" est":""}">${money2(t.conv(it))}</span>${
          it.currency !== DISP() ? `<span class="orig">${inCur(it.amount, it.currency)}</span>` : ""}</div>
        <button class="pencil" data-e="${it.id}" title="Edit">✎</button>
-       <button class="trash" data-i="${it.id}" title="Delete">✕</button>
      </div>`;
   led.innerHTML = sorted.length ? ledgerDays.map(day =>
       `<div class="dayhead">${dayLabel(day)}</div>` + sorted.filter(it => it.date === day).map(rowHTML).join("")
@@ -2553,11 +2603,6 @@ function renderTrip(S){
   led.querySelectorAll(".pencil").forEach(b =>
     b.onclick = () => openItemModal(t, t.items.find(i => i.id === b.dataset.e)));
   document.getElementById("addItemBtn").onclick = () => openItemModal(t, null);
-  led.querySelectorAll(".trash").forEach(b => b.onclick = async () => {
-    if (!confirm("Delete this line item?")) return;
-    try { await api("DELETE", `/api/trips/${t.id}/items/${b.dataset.i}`); await reload(); render(); }
-    catch(e){ alert("Could not delete: " + e.message); }
-  });
 
   // ---- category doughnut ----
   // Projected per category, so a trip you haven't taken still shows a shape.
@@ -2625,6 +2670,13 @@ function syncItemTile(){
   tile.style.background = tint(catColor(cat), .16);
 }
 
+let delTimer = null;                        // live while Delete is asking again
+function resetItemDel(){
+  const b = document.getElementById("niDel");
+  clearTimeout(delTimer); delTimer = null;
+  b.dataset.armed = ""; b.textContent = "Delete line";
+}
+
 function openItemModal(trip, item){
   itemTrip = trip; editingItem = item || null;
   const g = (id) => document.getElementById(id);
@@ -2644,6 +2696,8 @@ function openItemModal(trip, item){
   syncFx(); syncItemTile();
   g("itemModalLabel").textContent = item ? "Edit line" : "New line";
   g("niSaveMore").style.display = item ? "none" : "";
+  g("niDel").style.display = item ? "" : "none";
+  resetItemDel();
   g("itemModal").classList.add("open");
   g("niNote").focus();
 }
@@ -2683,6 +2737,27 @@ function openItemModal(trip, item){
       else g("itemModal").classList.remove("open");
     } catch(e){ showErr("Could not save: " + e.message); }
   }
+  /* Two taps, in the button itself. A confirm() is dismissed by reflex, and on
+     a phone it is a system alert that freezes the page while it is up — for a
+     single line that is both heavier and easier to get wrong than asking here.
+     It disarms itself after a few seconds, so a dialog left open on the table
+     never has a live delete waiting under one tap. */
+  g("niDel").onclick = async () => {
+    const b = g("niDel");
+    if (b.dataset.armed !== "1") {
+      b.dataset.armed = "1"; b.textContent = "Tap again to delete";
+      delTimer = setTimeout(resetItemDel, 5000);
+      return;
+    }
+    if (!editingItem || !itemTrip) return;
+    b.disabled = true;
+    try {
+      await api("DELETE", `/api/trips/${itemTrip.id}/items/${editingItem.id}`);
+      g("itemModal").classList.remove("open");
+      await reload(); render();
+    } catch(e){ showErr("Could not delete: " + e.message); }
+    finally { b.disabled = false; resetItemDel(); }
+  };
   g("niSave").onclick     = () => saveItem(false);
   g("niSaveMore").onclick = () => saveItem(true);
   // Enter saves and closes; Shift+Enter saves and keeps the dialog open for the
@@ -3089,7 +3164,12 @@ function drawVersion(){
 // from the real server rather than the one it gave the last time.
 async function checkVersion(){
   try {
-    const r = await fetch("/api/version", { cache:"no-store" });
+    const r = await fetch("/api/version", { cache:"no-store", redirect:"manual" });
+    // The gate answering instead of the app. Not a new build, not a dead
+    // server: the one case where the honest label is "sign in".
+    if (r.type === "opaqueredirect" || r.status === 401 || r.status === 403) {
+      connState = "signedout"; render(); return;
+    }
     if (!r.ok) return;
     serverVersion = (await r.json()).version || null;
   } catch (_) { return; }      // offline: what is on screen is the truth
@@ -3124,9 +3204,22 @@ document.addEventListener("click", (e) => {
   upd.disabled = true; upd.textContent = "Checking…";
   checkVersion().then(() => {
     if (serverVersion && serverVersion !== APP_VERSION) return updateApp(upd);
-    upd.disabled = false; upd.textContent = serverVersion ? "Up to date" : "No connection";
+    upd.disabled = false;
+    upd.textContent = serverVersion ? "Up to date"
+      : connState === "signedout" ? "Session expired" : "No connection";
     setTimeout(() => { upd.textContent = "Check for updates"; }, 4000);
   });
+});
+
+// Signing in again is a TOP-LEVEL NAVIGATION and can be nothing else: a fetch
+// cannot read the gate's redirect, which is the whole reason the app could not
+// tell you to sign in. The query string is there so nothing can answer it from
+// a cache, and the worker now hands that redirect back to the browser instead
+// of swallowing it — without that, this button would reload the same locked
+// copy of the app for ever.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-signin]")) return;
+  location.replace(location.pathname + "?in=" + Date.now());
 });
 
 // An installed app has no address bar, no reload and — since the bounce is

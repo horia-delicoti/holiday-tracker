@@ -11,12 +11,15 @@
 
    Bump VERSION to ship a new shell: the old caches are dropped on activate.
 ============================================================= */
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = "hl-shell-" + VERSION;
 const DATA = "hl-data-" + VERSION;
 
 // Everything needed to draw the app with the network down. Kept in step with
 // the files in public/ by the self check, which fails if one is missing.
+// The icons carry a version in their NAME rather than a query string, because
+// Safari's home-screen icon store is keyed by URL and never revalidated — see
+// the note on the apple-touch-icon link in index.html.
 // NB "/" is deliberately NOT here. It was, and because the asset branch below
 // is cache-first, every fetch of "/" returned the copy cached on first visit —
 // for good. The document has exactly one route into this worker now, and that
@@ -25,10 +28,10 @@ const ASSETS = [
   "/index.html",
   "/chart.umd.min.js",
   "/manifest.json",
-  "/icon-180.png",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/icon-512-maskable.png",
+  "/icon-180-v2.png",
+  "/icon-192-v2.png",
+  "/icon-512-v2.png",
+  "/icon-512-maskable-v2.png",
 ];
 
 // How long to wait for the server before falling back to the cached app. Long
@@ -115,6 +118,14 @@ async function dataFirst(req) {
 async function docFirst(req) {
   try {
     const res = await withTimeout(fetch(req), DOC_TIMEOUT);
+    // An auth gate in front of the app (Caddy + Authelia here) answers an
+    // expired session with a redirect to a login page on another origin. A
+    // navigation is fetched with redirect:"manual", so that arrives as an
+    // opaque redirect: hand it straight back and the browser follows it.
+    // Falling back to the cached shell instead — which is what this did — locks
+    // you inside a copy of the app you can never sign back into, and makes a
+    // healthy server look like a dead one.
+    if (res && (res.type === "opaqueredirect" || res.status === 401 || res.status === 403)) return res;
     if (!res || !res.ok) throw new Error("bad response");
     const copy = res.clone();
     caches.open(SHELL).then((c) => c.put("/index.html", copy));

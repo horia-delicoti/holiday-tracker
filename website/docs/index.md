@@ -27,7 +27,9 @@ whole design; see [Estimates](./estimates) for why.
    compared later.
    The purpose also colours the trip's card on the Trips page.
 2. **Add line items as you go** — amount, [category](./categories), currency, and whether it was
-   prepaid or paid on the ground
+   prepaid or paid on the ground.
+   A row opens for editing from the ✎ beside it; **delete lives inside that dialog**, behind a
+   button that asks a second time, rather than as an ✕ sitting a thumb's width from ✎ on every row.
 3. **Flag anything you're guessing** as an [estimate](./estimates), and correct it as you book
 4. **Read the analytics** — category share, cost per person per day, budget variance
 

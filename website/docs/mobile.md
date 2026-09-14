@@ -39,6 +39,33 @@ Three things are worth knowing:
   `addAll()` is atomic — one wrong path and the install rejects, leaving no offline mode and nothing
   on screen to say so.
 
+## Signed out is not offline
+
+The app sits behind an auth gate (Caddy forward-auth to Authelia). When that session expires the
+server is perfectly healthy — it just answers every request with a redirect to a login page on
+another origin, which a `fetch` is not allowed to read. It fails in exactly the way a pulled cable
+does, so the app announced **Offline** with the container up, and the worker served the cached shell
+for the navigation too: no reload, no address bar, no way back in. The app became a room with no
+door.
+
+One request tells the two apart. `redirect: "manual"` turns that redirect into an *answer* — an
+opaque one, `type === "opaqueredirect"` — instead of an error, so a gate in front of the app is
+visible where a dead network still throws. It is asked once, only when the store came out of the
+cache or a write has already failed, and it decides between two strips that give opposite
+instructions:
+
+> **Signed out** — your session expired, so these are the trips as they were at Mon 09:42. Reading
+> still works; adding or changing a line needs you signed in. **[Sign in]**
+
+**Sign in** is a top-level navigation and can be nothing else: a fetch cannot follow the gate's
+redirect, which is the whole reason the app could not say this in the first place. For that to
+arrive anywhere, the worker had to stop swallowing the redirect — a navigation is fetched with
+`redirect: "manual"`, so the gate's answer reaches the worker as an opaque redirect, and it is now
+handed straight back to the browser instead of being replaced with the cached page.
+
+A failed **write** says the same thing in its own words: *"Your session has expired — sign in again.
+Nothing was saved."* rather than blaming the connection.
+
 ## Which version is running, and how to get out of a stale one
 
 Settings names the build you are looking at — **Version 1.3.1**, in the desktop menu and in the
@@ -82,6 +109,12 @@ still equal `--paper`.
 The status bar style is `default`, not `black-translucent`: translucent draws the clock, battery
 and signal in **white** and lets the page run underneath, which over a near-white app makes the
 whole bar unreadable.
+
+**The icon's file name carries a version** (`icon-180-v2.png`), and that is load-bearing. Safari
+keeps home-screen icons in its own store, keyed by URL and never revalidated: the plane replaced the
+H in the app months before a freshly added shortcut still came out as an H. A changed icon needs a
+changed file name, or as far as the phone is concerned it does not exist. The self check asserts the
+name still matches `icon-<size>-v<n>.png`.
 
 The apple-touch-icon is a **full-bleed, fully opaque** square. iOS applies its own rounded mask and
 composites any transparency against black, so a pre-rounded source with transparent corners shows
@@ -143,7 +176,7 @@ the app draws.
 | **No zoom** | `maximum-scale=1, user-scalable=no`. iOS honours this in an installed PWA and deliberately ignores it in Safari, which is the right outcome either way. |
 | **16px inputs on touch** | The real fix. iOS force-zooms the page whenever you focus a field whose text is under 16px, and never zooms back out — that, not pinching, is what made the app feel like a web page. Fixed at source so it holds even where `user-scalable=no` is ignored. |
 | **The right keyboard** | `inputmode="decimal"` on money fields and `numeric` on counts. `type="number"` alone gets you the punctuation keyboard; inputmode is what asks for the big keypad you want when logging a bill. |
-| **Thumb-sized row controls** | Edit and delete on a ledger row were 21×24px against Apple's 44 minimum — two small targets side by side, one of them destructive, on the screen used most while away. They are 36×44 on touch: the glyphs are unchanged, only the box around them grew, and the note column keeps enough width to stay readable. |
+| **One thumb-sized row control** | Edit and delete on a ledger row were 21×24px against Apple's 44 minimum — two small targets side by side, one of them destructive, on the screen used most while away. Delete has moved into the edit dialog, so edit is now alone at the full 44×44 and the note column no longer pays for the second target. |
 | **Dialogs hold still** | iOS moves the *visual* viewport to reveal a focused field and leaves the layout viewport where it was, so a dialog fixed to `inset:0` slides off to one side — labels clipped, form apparently drifting as you type. The dialog is pinned to `--vvtop` / `--vvleft` / `--vvw` / `--vvh`, all published from `visualViewport`, and the page behind is locked with `body.locked` so there is nothing for iOS to scroll. |
 | **Form columns can shrink** | `.fgrid > div{min-width:0}`. A native date input has an intrinsic width, and a grid item defaults to `min-width:auto` — together they pushed the New trip dialog wider than the screen instead of fitting the column, which is what forced the sideways shift. |
 | **Dialogs clear the keyboard** | iOS does not shrink the layout viewport when the keyboard opens, so a centred dialog keeps its height and hides its own Save button. `--vvh` is published from `visualViewport` and the dialog is anchored to the top on phones, so it grows downwards and clamps to whatever is still visible — on a small phone it becomes scrollable rather than unreachable. |
@@ -171,7 +204,7 @@ Adding a view means adding its icon too, or the tab renders as a bare label.
 
 Ledger rows are two lines on every screen — name over category, amount over the as-paid figure —
 grouped under a header that names the day, so no row repeats its own date. The row is the same
-shape on a phone; only the edit and delete targets grow. Both tables (budget-vs-actual,
+shape on a phone; only the edit target grows. Both tables (budget-vs-actual,
 destinations) turn each row into a labelled block. **Nothing is hidden and nothing scrolls
 sideways** — every field the desktop shows is present, only the arrangement changes. Table cells carry a `data-l` heading for exactly this reason; adding a column to either
 table means adding its `data-l` too, or that cell renders as a bare number on a phone.

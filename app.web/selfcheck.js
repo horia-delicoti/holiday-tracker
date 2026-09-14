@@ -167,7 +167,7 @@ ok("every view has a bottom-bar icon", views.every(([id]) => ICONS[id]));
 // ------------------------------------------------------------ phone shell
 head("Phone shell");
 ok("installable", /rel="manifest"/.test(html) && /apple-touch-icon/.test(html));
-["manifest.json", "icon-180.png", "icon-192.png", "icon-512.png", "icon-512-maskable.png",
+["manifest.json", "icon-180-v2.png", "icon-192-v2.png", "icon-512-v2.png", "icon-512-maskable-v2.png",
  "sw.js"].forEach((f) =>
   ok("ships " + f, fs.existsSync(path.join(DIR, "public", f))));
 
@@ -219,6 +219,44 @@ ok("there is a way out of a stale cache",
    /getRegistrations\(\)[\s\S]{0,200}unregister\(\)/.test(js) && /caches\.delete/.test(js)
      && (html.match(/<button class="btn" data-checkupd>/g) || []).length === 2,
    "unregister and clear, offered in both shells");
+
+// --- an expired session is not an outage ---------------------------------
+// The app runs behind an auth gate. When the session expires, every request is
+// answered with a redirect to a login page on ANOTHER origin, which a fetch
+// cannot read — it fails in exactly the way a pulled cable does. So the app
+// announced "Offline" with the container up and healthy, and the worker served
+// the cached shell for the navigation too, which left no way to sign back in
+// from inside the app at all. Both halves are asserted here because both are
+// invisible until a session times out.
+ok("an expired session is told apart from an outage",
+   /redirect:"manual"/.test(js) && /opaqueredirect/.test(js)
+     && /connState === "signedout"/.test(js),
+   "one probe, and a strip that names the real problem");
+ok("the gate's redirect is handed back to the browser",
+   /opaqueredirect[\s\S]{0,160}return res;/.test(sw),
+   "or the cached shell is a room with no door");
+ok("signing in again is a navigation",
+   /data-signin/.test(html) && /data-signin[\s\S]{0,200}location\.replace/.test(js),
+   "a fetch cannot follow the gate's redirect — only the browser can");
+
+// --- deleting a line -----------------------------------------------------
+// Delete used to sit on every ledger row, one thumb-width from edit, and it is
+// the only action there that cannot be undone from the row itself.
+ok("a ledger row offers edit and nothing else",
+   /class="pencil"/.test(js) && !/class="trash" data-i=/.test(js),
+   "delete belongs behind the line you have already chosen");
+ok("deleting a line asks twice, in place",
+   /id="niDel"/.test(html) && /dataset\.armed/.test(js) && /Tap again to delete/.test(js),
+   "a confirm() is a system alert, and is dismissed by reflex");
+
+// --- the home-screen icon ------------------------------------------------
+// Safari keeps home-screen icons in its own store, keyed by URL and never
+// revalidated: the plane replaced the H months before a fresh shortcut still
+// came out as an H. A changed icon needs a changed file name or it does not
+// exist, so the name carries a version and this asserts it still does.
+ok("the home-screen icon is versioned in its name",
+   /apple-touch-icon" href="\/icon-\d+-v\d+\.png"/.test(html),
+   "Safari never refetches an icon at a URL it has already seen");
 
 // --- launch colours ------------------------------------------------------
 // iOS paints background_color before the app draws and tints the status bar
