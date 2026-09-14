@@ -110,11 +110,20 @@ The status bar style is `default`, not `black-translucent`: translucent draws th
 and signal in **white** and lets the page run underneath, which over a near-white app makes the
 whole bar unreadable.
 
-**The icon's file name carries a version** (`icon-180-v2.png`), and that is load-bearing. Safari
-keeps home-screen icons in its own store, keyed by URL and never revalidated: the plane replaced the
-H in the app months before a freshly added shortcut still came out as an H. A changed icon needs a
-changed file name, or as far as the phone is concerned it does not exist. The self check asserts the
-name still matches `icon-<size>-v<n>.png`.
+**The icon's file name carries a version** (`icon-180-v2.png`). Safari keeps home-screen icons in
+its own store, keyed by URL and never revalidated, so a changed icon needs a changed file name to be
+seen at all. The self check asserts the name still matches `icon-<size>-v<n>.png`.
+
+That is worth having, but it was **not** why the phone showed a letter monogram instead of the app's
+icon. The icon the rename was meant to dislodge had been a paper plane since the first release — so
+iOS was never showing a stale icon, it had never managed to fetch one. **Everything on the domain is
+behind the auth gate**, including `/manifest.json` and the icons, and the fetches that go looking for
+them do not carry the browser's session: the manifest link needs `crossorigin="use-credentials"`
+(fixed here), and the icon fetch made when you add to the Home Screen needs the reverse proxy to
+serve `/icon-*.png` without the gate. **A gate in front of a PWA has to make an exception for the
+handful of files that are read by something other than the signed-in page** — which is an argument
+for the app owning its own front door, since a gate you do not own cannot make that exception
+without editing someone else's config.
 
 The apple-touch-icon is a **full-bleed, fully opaque** square. iOS applies its own rounded mask and
 composites any transparency against black, so a pre-rounded source with transparent corners shows
@@ -178,7 +187,9 @@ the app draws.
 | **The right keyboard** | `inputmode="decimal"` on money fields and `numeric` on counts. `type="number"` alone gets you the punctuation keyboard; inputmode is what asks for the big keypad you want when logging a bill. |
 | **One thumb-sized row control** | Edit and delete on a ledger row were 21×24px against Apple's 44 minimum — two small targets side by side, one of them destructive, on the screen used most while away. Delete has moved into the edit dialog, so edit is now alone at the full 44×44 and the note column no longer pays for the second target. |
 | **Dialogs hold still** | iOS moves the *visual* viewport to reveal a focused field and leaves the layout viewport where it was, so a dialog fixed to `inset:0` slides off to one side — labels clipped, form apparently drifting as you type. The dialog is pinned to `--vvtop` / `--vvleft` / `--vvw` / `--vvh`, all published from `visualViewport`, and the page behind is locked with `body.locked` so there is nothing for iOS to scroll. |
-| **Form columns can shrink** | `.fgrid > div{min-width:0}`. A native date input has an intrinsic width, and a grid item defaults to `min-width:auto` — together they pushed the New trip dialog wider than the screen instead of fitting the column, which is what forced the sideways shift. |
+| **Form columns can shrink** | `.fgrid > div{min-width:0}`. A native date input has an intrinsic width, and a grid item defaults to `min-width:auto` — together they pushed the New trip dialog wider than the screen instead of fitting the column, which is what forced the sideways shift. The guard is **not** inside the phone media query: it was, and the browser had the same bug with more room to hide it. A self check brace-matches the media block to prove it stayed out. |
+| **Date fields obey their column** | Safari gives `input[type=date]` an intrinsic width and a UA minimum and honours neither `width:100%` nor `min-width:0` until `appearance` is reset — so the field ran past the edge of the dialog, and a dialog wider than the screen is one you can drag sideways under your thumb while you type. Chrome measures the same markup at exactly its column width, so this one cannot be caught by looking at it in the wrong browser. `.modal` also scrolls on one axis only (`overflow-x:hidden`): too wide should be clipped and obvious, never draggable. |
+| **The dates fence each other in** | Choosing a start greys out every earlier day in the end picker, and choosing an end greys out every later day in the start picker — bound to `input` as well as `change`, because `change` on a typed date fires when the field is committed, too late to narrow the picker you are about to open. An end a new start has just invalidated is cleared rather than left for the server to refuse. |
 | **Dialogs clear the keyboard** | iOS does not shrink the layout viewport when the keyboard opens, so a centred dialog keeps its height and hides its own Save button. `--vvh` is published from `visualViewport` and the dialog is anchored to the top on phones, so it grows downwards and clamps to whatever is still visible — on a small phone it becomes scrollable rather than unreachable. |
 | **Resumed sessions re-read** | An installed app has no address bar, no reload and no pull-to-refresh, so a session resumed from the app switcher would show whatever it loaded days ago — and, with the worker caching the store, possibly a copy of it. `visibilitychange` and `online` both trigger a re-read. |
 | **`touch-action: manipulation`** | Removes double-tap-to-zoom and the 300ms tap delay that comes with it, without touching scrolling. |

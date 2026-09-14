@@ -7,7 +7,12 @@
 <!-- Installable to the iOS/Android home screen: same app, same server, same data —
      the manifest only changes how it is launched (own icon, no browser chrome,
      its own cookie jar so the Authelia session survives between launches). -->
-<link rel="manifest" href="/manifest.json" />
+<!-- use-credentials, because a manifest is fetched WITHOUT cookies by default.
+     Behind an auth gate that means the browser asks for /manifest.json, is sent
+     to the login page instead, and quietly has no manifest at all — no name, no
+     icons, no display mode. Nothing reports this: the page itself is signed in
+     and looks perfect. -->
+<link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
 <!-- The launch colour, and on iOS the tint behind the status bar. It is the
      app's own paper, not the icon's navy: with the two different, every launch
      flashed a dark screen before the app appeared. One per scheme, or a dark
@@ -30,10 +35,14 @@
   document.querySelector('meta[name="theme-color"]').content = dark ? "#282A36" : "#F7F5F2";
 })();
 </script>
-<!-- The -v2 in the file name is load-bearing. Safari keeps home-screen icons
-     in its own store, keyed by URL and never revalidated: the plane replaced
-     the H here months before a new shortcut still came out as an H. A changed
-     icon therefore needs a changed file name, or it does not exist. -->
+<!-- The -v2 in the file name is a precaution, not the cure it was first
+     taken for: Safari does key home-screen icons by URL and never revalidate
+     them, so a changed icon does need a changed name. It was not why the phone
+     showed a letter, though. The icon it was supposed to dislodge had been a
+     paper plane since the first release, which means iOS had never managed to
+     fetch ANY icon — everything on the domain is behind an auth gate, and the
+     fetch that goes looking for this file does not carry the session. The fix
+     for that lives in the reverse proxy, not here. -->
 <link rel="apple-touch-icon" href="/icon-180-v2.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -705,6 +714,16 @@
   input.mono,select.mono{font-family:var(--mono)}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
   input:disabled{background:var(--soft);color:var(--muted)}
+  /* Safari gives a date field an intrinsic width and a UA minimum, and honours
+     neither `width:100%` nor `min-width:0` until its appearance is reset. In a
+     two-column grid that field then runs past the edge of the dialog — and a
+     dialog wider than the screen is one you can drag sideways, which is exactly
+     how this was reported: the form slides left and right under your thumb
+     while the Settings dialog, which has no date in it, sits still.
+     Chrome never showed it: there, the same markup measures 157px in a 157px
+     column. The reset is what makes the box obey the column everywhere. */
+  input[type=date]{-webkit-appearance:none;appearance:none;
+       width:100%;min-width:0;max-width:100%;display:block}
   .ledgerhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
   .ledgerhead h2{margin:0}
   .pill.purp{margin-left:4px;white-space:nowrap;font-weight:700}
@@ -761,7 +780,8 @@
   .estout .big{font-family:var(--mono);font-size:26px;color:var(--accent);font-weight:600}
   .estout .det{font-size:12px;color:var(--muted);margin-top:4px}
   /* ---------- modals ---------- */
-  .modal-bg{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal-bg{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;
+       padding:20px;z-index:50;overflow:hidden}
   .modal-bg.open{display:flex}
   /* With a dialog open there is nothing behind it worth scrolling, and leaving
      it scrollable is what let iOS drag the page around under the form. */
@@ -771,8 +791,11 @@
   /* --vvh is the VISUAL viewport height, set from JS. iOS does not shrink the
      layout viewport when the keyboard opens, so a dialog sized against vh
      keeps its full height and puts its own Save button under the keyboard. */
+  /* overflow-x is hidden, not auto: a dialog scrolls its content up and down,
+     never side to side. Something too wide should be clipped and obvious, not
+     turn the form into a thing that slides under your thumb while you type. */
   .modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;
-         padding:20px;max-height:calc(var(--vvh, 90vh) - 40px);overflow:auto}
+         padding:20px;max-height:calc(var(--vvh, 90vh) - 40px);overflow-y:auto;overflow-x:hidden}
   /* Anchored to the top on a phone rather than centred: with the keyboard up
      there is no centre left to sit in, and a dialog that grows downwards keeps
      its first field where the thumb expects it. */
@@ -785,20 +808,21 @@
          top:var(--vvtop,0);left:var(--vvleft,0);right:auto;bottom:auto;
          width:var(--vvw,100%);height:var(--vvh,100%)}
     .modal{max-height:calc(var(--vvh, 100vh) - 24px)}
-    /* A two-column grid whose items may not shrink: a native date input has an
-       intrinsic width, and without this it pushes the dialog wider than the
-       screen instead of fitting the column. */
-    .fgrid > div{min-width:0}
-    .fgrid input,.fgrid select{min-width:0}
   }
   .modal h3{font-family:var(--serif);font-size:19px;margin:0 0 4px}
   .modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
   .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  /* A grid item defaults to min-width:auto, so a control with an intrinsic
+     width pushes the dialog wider than the screen rather than fitting its
+     column. This was scoped to phones and the browser had the same bug: the
+     two date fields overlapped and ran past the edge of every other field. */
+  .fgrid > div{min-width:0}
+  .fgrid input,.fgrid select{min-width:0}
   .fgrid .wide{grid-column:1/-1}
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
   /* Delete sits at the far end from Save, so the destructive button is never
      the one your thumb lands on by momentum after typing an amount. */
-  #niDel{margin-right:auto}
+  #niDel,#delTripBtn{margin-right:auto}
   .modalhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
   .modalhead h3{margin:0 0 4px}
   .modal .note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
@@ -1089,10 +1113,13 @@
               <div class="tripmeta" id="tripMeta"></div>
             </div>
           </div>
+          <!-- Delete is not here. It used to sit beside Edit at the top of
+               every trip page, which is a permanent invitation to lose a whole
+               ledger: it now lives inside Edit, the same rule the ledger rows
+               follow. Two steps before anything destructive is on screen. -->
           <div class="tactions">
             <button class="btn ghost" id="allTripsBtn" title="Back to all trips">← All trips</button>
             <button class="btn" id="editTripBtn">Edit</button>
-            <button class="btn danger" id="delTripBtn">Delete trip</button>
           </div>
         </div>
       </div>
@@ -1186,6 +1213,10 @@
       <div id="tfRatingRow"><label for="tfRating">Rating <span class="opt">(1–5, optional)</span></label><input id="tfRating" type="number" inputmode="numeric" min="1" max="5" class="mono" /></div>
     </div>
     <div class="modal-actions">
+      <!-- Hidden when creating, like the rating above: there is nothing to
+           delete yet. It hands over to the typed-name confirmation rather than
+           deleting from here — a trip takes its whole ledger with it. -->
+      <button class="btn danger" id="delTripBtn">Delete trip</button>
       <button class="btn" data-close="tripModal">Cancel</button>
       <button class="btn primary" id="tripSave">Save trip</button>
     </div>
@@ -2805,19 +2836,33 @@ function openTripModal(trip){
   // A trip you have not taken has no rating to give, so the field is only
   // offered on Edit. Stored ratings are untouched either way.
   g("tfRatingRow").style.display = trip ? "" : "none";
+  g("delTripBtn").style.display  = trip ? "" : "none";
   // Stop the end date being set before the start date. The server rejects
   // end < start with a 400 anyway; this keeps the picker from offering it.
-  g("tfEnd").min = trip ? trip.start : "";
+  syncTripDates();
   document.getElementById("tripModal").classList.add("open");
 }
 
-// Narrow the end picker as soon as a start is chosen, and drop an end that the
-// new start has just invalidated rather than leaving a value the server will refuse.
-document.getElementById("tfStart").onchange = () => {
+// Each date fences the other in, so the calendar greys out the days that
+// cannot be right rather than letting you pick one and be refused afterwards:
+// once a start is chosen every earlier day is out for the end, and once an end
+// is chosen every later day is out for the start.
+//
+// Bound to input AND change: change alone fires when the field is committed,
+// which on a typed date is when it loses focus — too late to narrow the picker
+// you are about to open.
+function syncTripDates(){
   const a = document.getElementById("tfStart"), b = document.getElementById("tfEnd");
   b.min = a.value || "";
-  if (a.value && b.value && b.value < a.value) b.value = "";
-};
+  a.max = b.value || "";
+  // An end the new start has just invalidated is cleared rather than left for
+  // the server to reject.
+  if (a.value && b.value && b.value < a.value) { b.value = ""; a.max = ""; }
+}
+["tfStart","tfEnd"].forEach((id) => {
+  const el = document.getElementById(id);
+  el.oninput = el.onchange = syncTripDates;
+});
 
 document.getElementById("tripSave").onclick = async () => {
   const g = (id) => document.getElementById(id).value;
@@ -2907,14 +2952,20 @@ document.getElementById("editTripBtn").onclick  = () =>
 // Deleting a trip takes its whole ledger with it. The guard is typing the name:
 // a confirm() box gets dismissed by reflex, a name does not. Match is
 // case-insensitive and trims whitespace — the point is intent, not spelling.
+//
+// Reached from inside the edit dialog, which closes first rather than stacking
+// two dialogs on a phone screen. Any unsaved edits go with it, which costs
+// nothing: the next screen asks you to type the name of the trip you are about
+// to destroy. Cancel there and you are back on the trip, intact.
 let deletingTrip = null;
 document.getElementById("delTripBtn").onclick = () => {
   // stats(), not DATA.trips: the raw record has no `actual` — that figure only
   // exists on the tripStats view, and it is the honest one to quote here.
-  const t = stats().find(x => x.id === state.tripId);
+  const t = stats().find(x => x.id === (editingTrip ? editingTrip.id : state.tripId));
   if (!t) return;
   deletingTrip = t;
   const g = (id) => document.getElementById(id);
+  g("tripModal").classList.remove("open");
   g("delTitle").textContent = `Delete ${t.name}?`;
   g("delSub").innerHTML = `This removes the trip and all <b>${t.items.length}</b> of its line items`
     + (t.items.length ? ` — ${money(t.actual)} of recorded spend` : "") + `.`;

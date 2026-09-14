@@ -17,9 +17,9 @@ const DATA = "hl-data-" + VERSION;
 
 // Everything needed to draw the app with the network down. Kept in step with
 // the files in public/ by the self check, which fails if one is missing.
-// The icons carry a version in their NAME rather than a query string, because
-// Safari's home-screen icon store is keyed by URL and never revalidated — see
-// the note on the apple-touch-icon link in index.html.
+// The icons carry a version in their NAME rather than a query string: Safari's
+// home-screen icon store is keyed by URL and never revalidated — see the note
+// on the apple-touch-icon link in index.html.
 // NB "/" is deliberately NOT here. It was, and because the asset branch below
 // is cache-first, every fetch of "/" returned the copy cached on first visit —
 // for good. The document has exactly one route into this worker now, and that

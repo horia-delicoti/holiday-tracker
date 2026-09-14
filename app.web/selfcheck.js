@@ -167,6 +167,12 @@ ok("every view has a bottom-bar icon", views.every(([id]) => ICONS[id]));
 // ------------------------------------------------------------ phone shell
 head("Phone shell");
 ok("installable", /rel="manifest"/.test(html) && /apple-touch-icon/.test(html));
+// A manifest is fetched without cookies unless this says otherwise, so behind
+// an auth gate the browser gets the login page and ends up with no manifest at
+// all — silently, from a page that is itself signed in and looks perfect.
+ok("the manifest is fetched as the signed-in user",
+   /rel="manifest"[^>]*crossorigin="use-credentials"/.test(html),
+   "or the gate answers it and there is no manifest at all");
 ["manifest.json", "icon-180-v2.png", "icon-192-v2.png", "icon-512-v2.png", "icon-512-maskable-v2.png",
  "sw.js"].forEach((f) =>
   ok("ships " + f, fs.existsSync(path.join(DIR, "public", f))));
@@ -245,15 +251,29 @@ ok("signing in again is a navigation",
 ok("a ledger row offers edit and nothing else",
    /class="pencil"/.test(js) && !/class="trash" data-i=/.test(js),
    "delete belongs behind the line you have already chosen");
+// Same rule one level up: the trip page used to carry "Delete trip" beside
+// "Edit", a permanent invitation to lose a whole ledger from the screen you
+// read most. It now starts inside the edit dialog and still ends at the
+// typed-name confirmation, which is the guard that actually works.
+{
+  const tripModal = (/<div class="modal-bg" id="tripModal">[\s\S]*?\n<\/div>/.exec(html) || [""])[0];
+  const tactions = (/<div class="tactions">[\s\S]*?<\/div>/.exec(html) || [""])[0];
+  ok("deleting a trip starts inside the edit dialog",
+     /id="delTripBtn"/.test(tripModal) && !/delTripBtn/.test(tactions),
+     "not beside Edit on the page you read most");
+}
+ok("deleting a trip is still guarded by its name",
+   /matches\(\)/.test(js) && /delName/.test(html),
+   "a whole ledger goes with it");
 ok("deleting a line asks twice, in place",
    /id="niDel"/.test(html) && /dataset\.armed/.test(js) && /Tap again to delete/.test(js),
    "a confirm() is a system alert, and is dismissed by reflex");
 
 // --- the home-screen icon ------------------------------------------------
 // Safari keeps home-screen icons in its own store, keyed by URL and never
-// revalidated: the plane replaced the H months before a fresh shortcut still
-// came out as an H. A changed icon needs a changed file name or it does not
-// exist, so the name carries a version and this asserts it still does.
+// revalidated, so a changed icon needs a changed file name to be seen at all.
+// Worth keeping, but it was not why the phone showed a letter instead of the
+// app's icon: see the note on the apple-touch-icon link in index.html.
 ok("the home-screen icon is versioned in its name",
    /apple-touch-icon" href="\/icon-\d+-v\d+\.png"/.test(html),
    "Safari never refetches an icon at a URL it has already seen");
@@ -294,6 +314,8 @@ ok("index.html is not cached", /Cache-Control.*no-cache/.test(srvSrc), "so a red
 ok("inputs are 16px on touch", /@media\(max-width:700px\)\{input,select,textarea\{font-size:16px/.test(flat),
    "under 16px iOS force-zooms on focus and never zooms back");
 
+const PHONE_AT = "@media(max-width:700px){";
+
 // --- dialogs on a phone ---------------------------------------------------
 // iOS moves the VISUAL viewport to reveal a focused field and leaves the
 // layout viewport behind, so a dialog fixed to inset:0 slides off-screen and
@@ -307,6 +329,40 @@ ok("the page cannot scroll behind a dialog",
    "otherwise iOS drags the page around under the form");
 ok("form columns can shrink", /\.fgrid > div\{min-width:0\}/.test(flat),
    "a native date input has an intrinsic width and would widen the dialog");
+// ...and not only on a phone. This guard was scoped to max-width:700px, so the
+// browser had the same bug with more room to hide it: the two date fields
+// overlapped and ran past every other field in the dialog.
+// Brace-matched rather than pattern-matched: a regex for "inside this block"
+// happily runs past the closing brace and calls everything after it a match,
+// which is how this check first passed while the rule was still phone-only.
+const phoneBlocks = [];
+for (let i = flat.indexOf(PHONE_AT); i !== -1; i = flat.indexOf(PHONE_AT, i + 1)) {
+  const open = flat.indexOf("{", i);
+  let depth = 0;
+  for (let k = open; k < flat.length; k++) {
+    if (flat[k] === "{") depth++;
+    else if (flat[k] === "}" && --depth === 0) { phoneBlocks.push(flat.slice(open, k)); break; }
+  }
+}
+ok("form columns can shrink at every width",
+   phoneBlocks.length > 0 && !phoneBlocks.some((b) => b.includes(".fgrid > div{min-width:0}")),
+   "the browser had the same overlap, with more room to hide it");
+// Safari gives a date field an intrinsic width and a UA minimum and honours
+// neither width:100% nor min-width:0 until its appearance is reset. Chrome
+// measures the same markup at exactly its column width, so this one cannot be
+// caught by looking at it in the wrong browser.
+ok("a date field obeys its column",
+   /input\[type=date\]\{[^}]*appearance:none[^}]*max-width:100%/.test(flat),
+   "or Safari sizes it to itself and the dialog grows past the screen");
+// A dialog wider than the screen is a dialog you can drag sideways, which is
+// how this was reported: the form slid left and right under the thumb while
+// Settings, which has no date field in it, sat still.
+ok("a dialog scrolls up and down, never sideways",
+   /\.modal\{[^}]*overflow-x:hidden/.test(flat),
+   "too wide should be clipped and obvious, not draggable");
+ok("the two date pickers fence each other in",
+   /function syncTripDates/.test(js) && /b\.min = a\.value/.test(js) && /a\.max = b\.value/.test(js),
+   "impossible days are greyed out rather than refused after the fact");
 
 // The header label that normally reports a rates refresh is not on screen on a
 // phone, so the sheet row carries it — and must not close the sheet first.

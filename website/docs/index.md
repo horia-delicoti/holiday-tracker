@@ -26,6 +26,9 @@ whole design; see [Estimates](./estimates) for why.
    city break, snowboarding, hiking, family, work or other — so trips of the same kind can be
    compared later.
    The purpose also colours the trip's card on the Trips page.
+   **Edit** on a trip is also where deleting one starts — it is not a button sitting beside Edit on
+   the page you read most — and it still ends by asking you to type the trip's name, because a
+   trip takes its whole ledger with it.
 2. **Add line items as you go** — amount, [category](./categories), currency, and whether it was
    prepaid or paid on the ground.
    A row opens for editing from the ✎ beside it; **delete lives inside that dialog**, behind a
