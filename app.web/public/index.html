@@ -703,7 +703,18 @@
     .lrow .pencil{font-size:16px;padding:0;width:44px;height:44px;
          display:inline-flex;align-items:center;justify-content:center}
     .ledger{max-height:none}
+    /* The fold. Marked rows are hidden by a class on the container, so opening
+       it is one class change rather than a re-render, and nothing has to be
+       kept in step with the rows themselves. */
+    .ledger.folded .over{display:none}
+    #ledgerMore.show{display:block}
   }
+  /* Hidden outright everywhere else: above 700px the ledger scrolls inside its
+     own box, so there is nothing to unfold. */
+  #ledgerMore{display:none;width:100%;margin-top:10px;padding:11px;
+       border:1px dashed var(--line);border-radius:12px;background:none;
+       font-family:inherit;font-size:14px;color:var(--accent);cursor:pointer}
+  #ledgerMore:active{background:var(--soft)}
   /* ---------- breakdown: bars by default, donut a click away ---------- */
   .bdhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
   .bdhead h2{margin:0}
@@ -1213,6 +1224,10 @@
                way in: lines are added and edited in a dialog, not inline. -->
           <div class="ledgerhead"><h2 id="ledgerTitle">Expenses</h2><button class="btn primary sm" id="addItemBtn">+ Add line</button></div>
           <div class="ledger" id="tripLedger"></div>
+          <!-- Phone only: a long ledger is most of a trip page, and the page is
+               three screens before it. Desktop never folds — the list already
+               scrolls inside its own 520px box up there. -->
+          <button class="showall" id="ledgerMore"></button>
         </div>
         <div class="card">
           <div class="bdhead">
@@ -1746,7 +1761,10 @@ const ICONS = {
 };
 const VIEWS = [ ["overview","Overview"], ["year","By year"], ["trip","Trips"] ];
 let state = { view:"overview", year:null, tripId:null, display:null, tripFilter:"all", bd:"bars",
-              ovSpend:"purpose", ovShare:"grid" }; // display:null = show in base
+              ovSpend:"purpose", ovShare:"grid",
+              // The id of the trip whose ledger is unfolded on a phone, not a
+              // boolean: keyed this way it cannot follow you to the next trip.
+              ledgerOpen:null }; // display:null = show in base
 
 function renderNav(){
   const svg = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1874,9 +1892,16 @@ function render(){
   if (onTrip && state.tripId)  renderTrip(S);
   if (onTrip && !state.tripId) renderTripsList(S);
 
-  document.getElementById("foot").innerHTML =
-    `${S.reduce((a,t)=>a+t.items.length,0)} line items across ${S.length} trips. Every figure is derived
-     at render time — nothing aggregated is stored, so a corrected line instantly corrects every chart it feeds.`;
+  /* Overview only. It is a note about the whole ledger, so under one trip's
+     expenses or a single year it answers a question nobody asked there — and
+     on a phone it was a paragraph of small print between the last figure and
+     the tab bar on every screen. */
+  const foot = document.getElementById("foot");
+  foot.style.display = state.view === "overview" ? "" : "none";
+  if (state.view === "overview")
+    foot.innerHTML =
+      `${S.reduce((a,t)=>a+t.items.length,0)} line items across ${S.length} trips. Every figure is derived
+       at render time — nothing aggregated is stored, so a corrected line instantly corrects every chart it feeds.`;
 }
 
 /* =============================================================
@@ -2694,8 +2719,8 @@ function renderTrip(S){
   const dayLabel = (iso) => DOW[new Date(iso + "T00:00:00").getDay()] + " " + dayMon(iso);
   const sorted = t.items.slice().sort((a,b)=>a.date.localeCompare(b.date));
   const ledgerDays = [...new Set(sorted.map(it => it.date))];
-  const rowHTML = (it) =>
-    `<div class="lrow"${it.currency !== DISP()
+  const rowHTML = (it, over) =>
+    `<div class="lrow${over ? " over" : ""}"${it.currency !== DISP()
         ? ` title="${inCur(it.amount, it.currency)} at ${it.fx} ${BASE()} per ${it.currency}"` : ""}>
        <i class="catico" style="background:${tint(catColor(it.category), .16)}">${catIcon(it.category)}</i>
        <div class="body">
@@ -2708,9 +2733,29 @@ function renderTrip(S){
          it.currency !== DISP() ? `<span class="orig">${inCur(it.amount, it.currency)}</span>` : ""}</div>
        <button class="pencil" data-e="${it.id}" title="Edit">✎</button>
      </div>`;
-  led.innerHTML = sorted.length ? ledgerDays.map(day =>
-      `<div class="dayhead">${dayLabel(day)}</div>` + sorted.filter(it => it.date === day).map(rowHTML).join("")
-    ).join("") : `<div class="empty">No line items yet — add the flights first.</div>`;
+  /* Everything past the ninth row is marked rather than dropped: the rows are
+     all in the DOM, so expanding is a class on the container and not another
+     render, and find-in-page on a desktop still sees the whole ledger.
+     A day header is folded with its own rows — a heading standing over nothing
+     is how a fold starts looking broken. */
+  const CAP = 9;
+  const open = state.ledgerOpen === t.id;
+  let shown = 0;
+  led.className = "ledger" + (open || sorted.length <= CAP ? "" : " folded");
+  led.innerHTML = sorted.length ? ledgerDays.map(day => {
+      const head = `<div class="dayhead${shown >= CAP ? " over" : ""}">${dayLabel(day)}</div>`;
+      return head + sorted.filter(it => it.date === day)
+        .map(it => rowHTML(it, shown++ >= CAP)).join("");
+    }).join("") : `<div class="empty">No line items yet — add the flights first.</div>`;
+
+  // Not an inline display: the button is hidden outright above 700px, and an
+  // inline style set here would win over that and put it on the desktop too.
+  const more = document.getElementById("ledgerMore");
+  more.classList.toggle("show", sorted.length > CAP);
+  more.textContent = open ? "Show fewer" : `Show all ${sorted.length} lines`;
+  // Keyed to the trip, so opening one ledger does not open the next one you
+  // visit, and there is no flag to reset when the trip changes.
+  more.onclick = () => { state.ledgerOpen = open ? null : t.id; render(); };
 
   led.querySelectorAll(".pencil").forEach(b =>
     b.onclick = () => openItemModal(t, t.items.find(i => i.id === b.dataset.e)));

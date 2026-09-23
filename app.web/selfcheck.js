@@ -385,6 +385,23 @@ ok("the two date pickers fence each other in",
 // further down the stylesheet at equal specificity, and opening at the top of
 // the screen with a third of the display empty underneath it. Two classes
 // settle it by specificity rather than by line order.
+// A long ledger is most of a trip page, and the page is three screens before
+// it. Nine rows, then a button. The rows past the ninth stay in the DOM and are
+// hidden by a class on the container, so opening is one class change rather
+// than another render - and find-in-page on a desktop still sees all of them.
+ok("a long ledger folds on a phone",
+   /\.ledger\.folded \.over\{display:none\}/.test(flat) && /const CAP = 9;/.test(js)
+     && /#ledgerMore\{display:none/.test(flat),
+   "nine rows and a button, and nothing folded above 700px");
+ok("a folded day header goes with its rows",
+   /dayhead\$\{shown >= CAP \? " over" : ""\}/.test(js),
+   "a heading standing over nothing is how a fold starts looking broken");
+// It is a note about the whole ledger. Under one trip's expenses it answers a
+// question nobody asked, and on a phone it was a paragraph of small print
+// between the last figure and the tab bar on every single screen.
+ok("the ledger footnote is on the overview only",
+   /foot\.style\.display = state\.view === "overview"/.test(js),
+   "it describes the whole store, not the page you are on");
 ok("the action sheet rises from the bottom",
    /\.modal-bg\.sheetbg\{align-items:flex-end/.test(flat),
    "one class loses to the phone dialog rule further down");
