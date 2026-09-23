@@ -293,9 +293,22 @@
      your thumb rather than at the top of the screen. Floats clear of all three
      edges to match the tab bar. Desktop never sees it. */
   .sheet{background:var(--surface);border:1px solid var(--line);border-radius:22px;
-       width:calc(100% - 20px);margin:0 10px calc(10px + env(safe-area-inset-bottom));
-       padding:8px;box-shadow:var(--glassshadow)}
-  .sheetbg{align-items:flex-end;padding:0}
+       width:calc(100% - 20px);margin:0 10px;
+       padding:8px;box-shadow:var(--glassshadow);
+       /* A long sheet on a short phone scrolls itself rather than running off
+          the top edge, where the first rows would be unreachable. */
+       max-height:100%;overflow-y:auto}
+  /* TWO classes on purpose. .modal-bg is re-anchored to flex-start on phones —
+     dialogs grow downwards from the top so the keyboard cannot bury their Save
+     button — and that rule sits further down the stylesheet at equal
+     specificity, so it was quietly winning: the sheet opened at the TOP of the
+     screen with a third of the display empty beneath it. Naming both classes
+     settles it by specificity instead of by line order. */
+  /* The bar keeps its place: the sheet stops above it rather than covering it,
+     so the sheet reads as an extension of the Settings tab rather than a
+     different screen, and the other three tabs stay one press away. The room
+     left here is the bar's own height plus the gap it floats in. */
+  .modal-bg.sheetbg{align-items:flex-end;padding:10px 0 calc(var(--navgap) + 72px)}
   .sheetrow{display:flex;align-items:center;gap:12px;width:100%;border:0;background:none;
        font-family:inherit;font-size:16px;color:var(--ink);text-align:left;
        padding:14px 12px;border-radius:16px;cursor:pointer}
@@ -303,6 +316,11 @@
   .sheetrow.ok{color:var(--good)} .sheetrow.ok .ico{color:var(--good)}
   .sheetrow.bad{color:var(--warn)} .sheetrow.bad .ico{color:var(--warn)}
   .sheetrow .ico{width:24px;text-align:center;color:var(--muted);font-size:16px;flex:none}
+  /* Above the scrim, and ONLY while the sheet is open: a dialog is modal and
+     must not leave a live tab bar behind it, but this sheet belongs to the bar.
+     :has() is how that is said without a second piece of state to keep in step;
+     where it is unsupported the bar simply dims as it used to. */
+  body:has(#menuSheet.open) #viewNav{z-index:60}
   .sheetsep{height:1px;background:var(--hair);margin:6px 10px}
   .sheetsel{display:flex;align-items:center;gap:12px;padding:10px 12px;font-size:16px;color:var(--ink)}
   /* Segmented control — the same chrome as the breakdown toggle, widened for
@@ -378,6 +396,8 @@
     /* the page has to clear the floating bar, and the notch at the other end */
     .wrap{padding-top:20px;
           padding-bottom:calc(80px + var(--navgap))}
+
+
   }
   /* ---------- one-line header (desktop only) ----------
      Brand, tabs and actions on a single row, with the tabs sitting directly
@@ -400,6 +420,32 @@
   .tab{font-family:var(--mono);font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);
        background:var(--surface);cursor:pointer;color:var(--ink)}
   .tab.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  @media(max-width:700px){
+    /* ---------- the context bar ----------
+       A second capsule directly above the tab bar, carrying whatever the view
+       in front of you filters by: the years on By year, the status chips on
+       Trips. Both used to sit at the top of the page, which on a phone is the
+       one place a thumb cannot reach, and cost a row of height each before a
+       single figure appeared.
+
+       These are the SAME two elements, moved — not copies. They keep their own
+       markup, their own click handlers and their own idea of what is selected,
+       so there is no second source of truth to drift. They can share one slot
+       because they are never both on screen: #tabs is displayed only on the
+       year view, and #tabs2 lives inside #tripsView, which is hidden the rest
+       of the time (including when a trip is open). */
+    #tabs,#tabs2{position:fixed;left:14px;right:14px;bottom:calc(var(--navgap) + 66px);
+         z-index:40;margin:0;gap:6px;
+         /* nowrap + scroll, because a decade of years must not become two rows
+            stacked in front of the app. */
+         flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+         background:var(--surface);border:1px solid var(--line);border-radius:22px;
+         padding:7px 8px;box-shadow:var(--glassshadow)}
+    #tabs::-webkit-scrollbar,#tabs2::-webkit-scrollbar{display:none}
+    #tabs .tab,#tabs2 .tab{flex:none}
+    /* Only the views that carry a bar pay for its height. */
+    #yearView,#tripsView{padding-bottom:54px}
+  }
   /* ---------- cards ---------- */
   /* Edges are almost invisible and the separation comes from a shadow instead.
      A 1px line around every card turns a dense dashboard into a grid of boxes;
@@ -440,12 +486,6 @@
   .tripshead{display:flex;align-items:center;justify-content:space-between;gap:12px;
        flex-wrap:wrap;margin-bottom:14px}
   .tripshead h2{margin:0}
-  /* The header already carries "+ New trip" on a wide screen, so the in-page
-     copy would be a second button for the same action. It exists only below
-     700px, which is exactly where the header row is hidden. One visible way to
-     start a trip in either layout, and still only one implementation. */
-  #tripsNewBtn{display:none}
-  @media(max-width:700px){ #tripsNewBtn{display:inline-flex} }
   .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
   /* The status strip is the card's top border rather than an extra element:
      one less box, and it cannot drift out of alignment with the corners. */
@@ -493,6 +533,34 @@
        margin-top:2px;flex-wrap:wrap}
   .tcard .tc-amt{font-family:var(--mono);font-size:19px}
   .tcard .tc-est{font-family:var(--mono);font-size:11px;color:var(--amber-deep)}
+
+  /* ---------- the trips page on a phone ---------- */
+  @media(max-width:700px){
+    /* The page title and its + New trip: the title repeats the tab you just
+       pressed, and the count it carries is already on the "All 12" chip below
+       it. The button was only ever here because the desktop header is hidden
+       on a phone — but the action sheet has carried New trip since the header
+       moved there, so this was the second button for it, in the scarcest space
+       on the screen. */
+    .tripshead{display:none}
+
+    /* Two to a row. A phone showed one card and a sliver of the next, which
+       makes a list of twelve trips a scroll rather than a glance. Nothing is
+       dropped to make room — status, purpose, country, dates, nights, total and
+       the estimate note are all still on the card, just set smaller. */
+    .tgrid{grid-template-columns:repeat(2,1fr);gap:10px}
+    .tcard{padding:12px 12px 13px;gap:5px}
+    .tc-pin{width:26px;height:26px;font-size:14px;border-radius:8px}
+    .tc-status{font-size:9px;padding:2px 6px;letter-spacing:.04em}
+    .tcard .tc-name{font-size:15px}
+    .tcard .tc-where{font-size:11px;min-height:0}
+    .tcard .tc-dates{font-size:11px}
+    /* Stacked rather than side by side: at half the width "all estimated"
+       would sit under the total anyway, but wrapped raggedly. */
+    .tcard .tc-foot{flex-direction:column;align-items:flex-start;gap:1px}
+    .tcard .tc-amt{font-size:17px}
+    .tcard .tc-est{font-size:10px}
+  }
   .tripmain{display:grid;grid-template-columns:5fr 3fr;gap:18px;margin-top:20px;align-items:start}
   @media(max-width:900px){.tripmain{grid-template-columns:1fr}}
   .full{grid-column:1/-1}
@@ -1698,6 +1766,9 @@ function renderNav(){
     b.onclick = () => {
       // Re-entering Trips lands on the index, not on whatever was last opened.
       if (b.dataset.v === "trip") state.tripId = null;
+      // The bar stays live while the sheet is open, so a tab press has to mean
+      // what it says: go there, and take the sheet down on the way.
+      document.getElementById("menuSheet").classList.remove("open");
       state.view = b.dataset.v; render(); });
   document.getElementById("navMoreBtn").onclick = () =>
     document.getElementById("menuSheet").classList.add("open");
@@ -2541,9 +2612,11 @@ function renderTripsList(S){
   }).join("");
 
   document.getElementById("tripsList").innerHTML = `
+    <!-- Desktop only: the phone hides this row entirely. The count it carries
+         is on the "All ${S.length}" chip either way, and New trip is one press
+         away in the header up here and in the action sheet down there. -->
     <div class="tripshead">
       <h2>Trips <span class="sub">\u00b7 ${S.length} in all</span></h2>
-      <button class="btn primary" id="tripsNewBtn">+ New trip</button>
     </div>
     <div id="tabs2">${chips}</div>
     ${groups || `<div class="muted">No ${f} trips.</div>`}`;
@@ -2552,10 +2625,6 @@ function renderTripsList(S){
     b.onclick = () => { state.tripId = b.dataset.t; render(); });
   document.querySelectorAll("#tripsList .tab").forEach(b =>
     b.onclick = () => { state.tripFilter = b.dataset.f; render(); });
-  // Delegates to the real header button rather than duplicating the handler —
-  // the same rule the phone action sheet follows. One implementation, always.
-  document.getElementById("tripsNewBtn").onclick = () =>
-    document.getElementById("newTripBtn").click();
 }
 
 /* =============================================================

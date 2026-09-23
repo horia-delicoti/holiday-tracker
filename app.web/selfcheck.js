@@ -372,6 +372,53 @@ ok("the two date pickers fence each other in",
    /function syncTripDates/.test(js) && /b\.min = a\.value/.test(js) && /a\.max = b\.value/.test(js),
    "impossible days are greyed out rather than refused after the fact");
 
+// --- what the thumb can reach -------------------------------------------
+// The year pills and the trip filter chips both used to sit at the top of the
+// page, the one place on a phone a thumb cannot get to, and each cost a row of
+// height before a single figure appeared. Below 700px they are the SAME two
+// elements, moved into a capsule above the tab bar — not copies, so there is
+// no second source of truth to drift. They can share one slot because they are
+// never both on screen.
+// Dialogs are re-anchored to the top on phones so the keyboard cannot bury
+// their Save button. The action sheet is the exception and must stay at the
+// bottom, next to the thumb — it was losing that argument to the dialog rule
+// further down the stylesheet at equal specificity, and opening at the top of
+// the screen with a third of the display empty underneath it. Two classes
+// settle it by specificity rather than by line order.
+ok("the action sheet rises from the bottom",
+   /\.modal-bg\.sheetbg\{align-items:flex-end/.test(flat),
+   "one class loses to the phone dialog rule further down");
+// And the bar stays under it rather than behind it. The sheet belongs to the
+// Settings tab, so covering the bar with a scrim makes it look like a screen
+// you left rather than a drawer you opened. Scoped to the sheet: a dialog IS
+// modal and must not leave a live tab bar behind it.
+ok("the tab bar survives the sheet",
+   /body:has\(#menuSheet\.open\) #viewNav\{z-index:60\}/.test(flat)
+     && /\.modal-bg\.sheetbg\{[^}]*calc\(var\(--navgap\) \+ 72px\)/.test(flat),
+   "the sheet stops above the bar, and the bar paints over the scrim");
+ok("a tab press takes the sheet down with it",
+   /menuSheet"\)\.classList\.remove\("open"\);\s*\n\s*state\.view = b\.dataset\.v/.test(js),
+   "a live bar behind a sheet has to mean what it says");
+ok("the year picker and the trip filter are within reach",
+   /#tabs,#tabs2\{position:fixed/.test(flat) && /#tabs,#tabs2\{[^}]*flex-wrap:nowrap/.test(flat),
+   "one capsule above the tab bar, scrolling rather than wrapping");
+// Twice in one afternoon a phone override did nothing because it was written
+// ABOVE the rule it overrides, at equal specificity. Both live here now.
+{
+  const after = (over, base) => flat.indexOf(over) > flat.indexOf(base) && flat.includes(over);
+  ok("phone overrides come after the rules they override",
+     after("#tabs,#tabs2{position:fixed", "#tabs,#tabs2{display:flex")
+       && after(".tgrid{grid-template-columns:repeat(2,1fr)", ".tgrid{display:grid"),
+     "equal specificity — the later block is the one that wins");
+}
+ok("trips are two to a row on a phone",
+   /\.tgrid\{grid-template-columns:repeat\(2,1fr\)/.test(flat) && /\.tripshead\{display:none\}/.test(flat),
+   "one card and a sliver of the next makes twelve trips a scroll, not a glance");
+// The page title repeated the tab that was just pressed, and its + New trip
+// was the second button for an action the action sheet already carries.
+ok("there is one way to start a trip, per layout",
+   !/tripsNewBtn/.test(html), "header on desktop, action sheet on a phone");
+
 // The header label that normally reports a rates refresh is not on screen on a
 // phone, so the sheet row carries it — and must not close the sheet first.
 ok("the rates row reports in place",
