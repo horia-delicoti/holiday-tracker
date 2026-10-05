@@ -416,6 +416,25 @@ ok("the tab bar survives the sheet",
 ok("a tab press takes the sheet down with it",
    /menuSheet"\)\.classList\.remove\("open"\);\s*\n\s*state\.view = b\.dataset\.v/.test(js),
    "a live bar behind a sheet has to mean what it says");
+// A dialog opened from the sheet is a page of the sheet, not a second window:
+// it takes the sheet's frame, has back and X, keeps the tab bar live, and stops
+// being a sheet page the moment it closes — or the next time it opens from a
+// trip page it would still be wearing the sheet's frame.
+ok("dialogs opened from the sheet open inside it",
+   /m\.classList\.add\("insheet"\)/.test(js)
+     && /class="navback"/.test(js) && /class="navx"/.test(js)
+     && /contains\("insheet"\)\) bg\.classList\.remove\("insheet"\)/.test(js)
+     && /body:has\(\.modal-bg\.insheet\.open\) #viewNav\{z-index:60\}/.test(flat)
+     && /\.modal-bg\.insheet\.open"\)\.forEach\(m => m\.classList\.remove\("open"\)\);\s*\n\s*document\.getElementById\("menuSheet"\)/.test(js),
+   "back and X, the bar stays live, and the frame does not outlive the page");
+// On a phone the Currencies page has no Save button, so it must save itself —
+// and only there: on desktop Save stays an explicit press. A pending edit is
+// flushed on the way out rather than lost with its timer.
+ok("the phone Currencies page saves itself, and only there",
+   /function queueAutoSave[\s\S]{0,80}if \(!setBg\.classList\.contains\("insheet"\)\) return;/.test(js)
+     && /#setModal\.insheet \.modal-actions\{display:none\}/.test(flat)
+     && /if \(autoTimer\) \{ clearTimeout\(autoTimer\); autoSave\(\); \}/.test(js),
+   "autosave is scoped to the sheet page, and leaving sends the last edit");
 ok("the year picker and the trip filter are within reach",
    /#tabs,#tabs2\{position:fixed/.test(flat) && /#tabs,#tabs2\{[^}]*flex-wrap:nowrap/.test(flat),
    "one capsule above the tab bar, scrolling rather than wrapping");

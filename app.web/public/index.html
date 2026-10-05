@@ -237,11 +237,17 @@
        background:var(--surface);border:1px solid var(--line);border-radius:11px;
        padding:6px;width:214px;box-shadow:var(--shadow-pop)}
   .menu.open{display:block}
-  .mrow{display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;
-       font-family:inherit;font-size:13.5px;color:var(--ink);padding:9px 10px;border-radius:7px;
+  .mrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;cursor:pointer;
+       font-family:inherit;font-size:13.5px;color:var(--ink);padding:8px 10px;border-radius:7px;
        text-decoration:none}
   .mrow:hover{background:var(--soft)}
+  .mrow:hover .mico{color:var(--ink)}
+  .mico{width:16px;height:16px;flex:none;color:var(--muted);stroke-width:1.9}
   .msep{height:1px;background:var(--hair);margin:5px 8px}
+  /* Group labels: the menu is three jobs — currency, backups, restore — and a
+     label says which job a row belongs to before you read the row itself. */
+  .mhead{padding:7px 10px 3px;font-size:10.5px;font-weight:600;letter-spacing:.14em;
+       text-transform:uppercase;color:var(--muted)}
   /* Rates button feedback: the label carries the result, so there is no toast
      to miss and no silent failure. */
   /* The least-used control on the row was wearing the same chrome as a primary
@@ -285,7 +291,7 @@
            -webkit-backdrop-filter:blur(22px) saturate(180%);
            backdrop-filter:blur(22px) saturate(180%)}
     }
-    .sheet{background:var(--glass);border:1px solid var(--glassline);
+    .sheet,.modal-bg.insheet .modal{background:var(--glass);border:1px solid var(--glassline);
          -webkit-backdrop-filter:blur(26px) saturate(180%);
          backdrop-filter:blur(26px) saturate(180%)}
   }
@@ -315,12 +321,17 @@
   .sheetrow:active{background:var(--soft)}
   .sheetrow.ok{color:var(--good)} .sheetrow.ok .ico{color:var(--good)}
   .sheetrow.bad{color:var(--warn)} .sheetrow.bad .ico{color:var(--warn)}
-  .sheetrow .ico{width:24px;text-align:center;color:var(--muted);font-size:16px;flex:none}
+  .sheetrow .ico,.sheetsel .ico{width:24px;text-align:center;color:var(--muted);font-size:16px;flex:none}
+  .ico svg{display:block;width:21px;height:21px;margin:0 auto;stroke-width:1.8}
+  .sheethead{padding:10px 12px 2px;font-size:11.5px;font-weight:600;letter-spacing:.12em;
+       text-transform:uppercase;color:var(--muted)}
   /* Above the scrim, and ONLY while the sheet is open: a dialog is modal and
      must not leave a live tab bar behind it, but this sheet belongs to the bar.
      :has() is how that is said without a second piece of state to keep in step;
      where it is unsupported the bar simply dims as it used to. */
   body:has(#menuSheet.open) #viewNav{z-index:60}
+  /* Same for a page opened from the sheet: it is still the Settings tab. */
+  body:has(.modal-bg.insheet.open) #viewNav{z-index:60}
   .sheetsep{height:1px;background:var(--hair);margin:6px 10px}
   .sheetsel{display:flex;align-items:center;gap:12px;padding:10px 12px;font-size:16px;color:var(--ink)}
   /* Segmented control — the same chrome as the breakdown toggle, widened for
@@ -900,6 +911,84 @@
          width:var(--vvw,100%);height:var(--vvh,100%)}
     .modal{max-height:calc(var(--vvh, 100vh) - 24px)}
   }
+  /* ---------- dialogs opened from the phone Settings sheet ----------
+     They do not stack a second window on top: the dialog takes over the
+     sheet's own frame — same edges, same radius, same frosted surface, the tab
+     bar still live beneath it — so it reads as a page inside the sheet, with a
+     back arrow to the menu and an X to leave. Only on phones, and only when
+     opened from the sheet (.insheet is set by the sheet's own wiring); the same
+     dialogs opened from a trip page or on desktop are untouched. */
+  .sheetnav{display:none}
+  @media(max-width:700px){
+    /* Bottom up, like the sheet it came from: as tall as its content, and
+       scrolling inside itself only once that runs out of screen. The
+       background is pinned to the VISUAL viewport, so with the keyboard up
+       "the bottom" is the top of the keyboard, not somewhere underneath it. */
+    .modal-bg.insheet{align-items:flex-end;padding:10px 0 calc(var(--navgap) + 72px)}
+    /* No extra room is reclaimed while a field has focus, deliberately. It was
+       tried: the page then jumps ~60px the instant the field blurs, which is
+       the instant you tap Back or Save — and a tap whose target moves between
+       press and release is not a click. A page that holds still wins. */
+    .modal-bg.insheet .modal{max-width:none;width:calc(100% - 20px);margin:0 10px;max-height:100%;
+         border-radius:22px;padding:0 16px 18px;box-shadow:var(--glassshadow);
+         animation:sheetpush .2s ease-out}
+    .modal-bg.insheet .sheetnav{display:flex;align-items:center;justify-content:space-between;
+         position:sticky;top:0;z-index:2;margin:0 -16px 10px;padding:6px 8px;
+         background:var(--surface);border-bottom:1px solid var(--hair);border-radius:21px 21px 0 0}
+    /* X and back replace them; Save stays. */
+    .modal-bg.insheet [data-close]{display:none}
+    /* The one action left is the thumb's: full width, pinned to the bottom
+       edge of the page so a long form never scrolls it out of reach. */
+    .modal-bg.insheet .modal-actions{position:sticky;bottom:-18px;z-index:2;margin:16px -16px -18px;
+         padding:12px 16px 14px;background:var(--surface);border-top:1px solid var(--hair);
+         border-radius:0 0 21px 21px}
+    .modal-bg.insheet .modal-actions .primary{flex:1;justify-content:center;padding:13px;font-size:16px}
+    /* Currencies saves itself on a phone, so it has no actions at all. */
+    #setModal.insheet .modal-actions{display:none}
+    .modal-bg.insheet .snaprow{padding:12px 2px}
+    .modal-bg.insheet .snaprow .btn{padding:9px 16px;font-size:15px}
+    #menuSheet.popback .sheet{animation:sheetpop .2s ease-out}
+  }
+  .sheetnav button{display:inline-flex;align-items:center;gap:2px;border:0;background:none;
+       font:inherit;font-size:16px;color:var(--accent);padding:8px 6px;border-radius:12px;cursor:pointer}
+  .sheetnav button:active{background:var(--soft)}
+  .sheetnav svg{width:22px;height:22px;stroke-width:2}
+  .sheetnav .navx{color:var(--muted);padding:8px}
+  /* Autosave report, between back and X — where the eye already goes to leave. */
+  .navstatus{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;color:var(--muted);
+       transition:color .2s}
+  .navstatus.ok{color:var(--good)} .navstatus.bad{color:var(--warn)}
+  .navstatus svg{width:16px;height:16px;stroke-width:2.2}
+  /* ---------- the i and its bubble ----------
+     Explanations are reference: read once, then in the way of every later
+     visit. They wait behind an i next to the title and open in place, with a
+     caret pointing back at the button that opened them. */
+  .titlerow{display:flex;align-items:center;gap:6px;margin-bottom:12px}
+  .titlerow h3{margin:0}
+  .modalhead .titlerow{margin-bottom:0}
+  .modalhead{margin-bottom:12px}
+  .infobtn{display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;
+       padding:0;border:0;border-radius:50%;background:none;color:var(--muted);cursor:pointer}
+  .infobtn svg{width:19px;height:19px;stroke-width:1.8}
+  .infobtn:hover,.infobtn[aria-expanded="true"]{color:var(--accent);background:var(--soft)}
+  .infobtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .infobox{position:relative;margin:0 0 16px;padding:11px 13px;border-radius:11px;background:var(--soft);
+       font-size:12.5px;line-height:1.55;color:var(--muted);animation:infoin .15s ease-out}
+  .infobox p{margin:0} .infobox p+p{margin-top:8px}
+  .infobox::before{content:"";position:absolute;top:-6px;left:var(--caret,24px);
+       border:6px solid transparent;border-top:0;border-bottom-color:var(--soft)}
+  @keyframes infoin{from{opacity:0;transform:translateY(-4px)}}
+  @media(prefers-reduced-motion:reduce){ .infobox{animation:none} }
+  @media(max-width:700px){ .infobox{font-size:14px} }
+  /* Snapshot rows say how long ago, under the exact time: "2 hours ago" is
+     what you are actually looking for after a mistake. */
+  .snapwhen{display:flex;flex-direction:column;gap:2px}
+  .snaprow .ago{font-size:11.5px;color:var(--muted)}
+  @keyframes sheetpush{from{transform:translateX(28px);opacity:0}}
+  @keyframes sheetpop{from{transform:translateX(-28px);opacity:0}}
+  @media(prefers-reduced-motion:reduce){
+    .modal-bg.insheet .modal,#menuSheet.popback .sheet{animation:none}
+  }
   .modal h3{font-family:var(--serif);font-size:19px;margin:0 0 4px}
   .modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
   .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -982,12 +1071,17 @@
           <button class="btn" id="setMenuBtn" aria-haspopup="menu" aria-expanded="false"
                   aria-label="Settings" title="Settings"></button>
           <div class="menu" id="setMenu" role="menu">
-            <button class="mrow" id="setBtn">⚙ Currencies &amp; rates</button>
+            <!-- Row icons are filled from MICONS by data-mico, like the cog above. -->
+            <div class="mhead">Currency</div>
+            <button class="mrow" id="setBtn"><span data-mico="coins"></span>Currencies &amp; rates</button>
             <div class="msep"></div>
+            <div class="mhead">Backups</div>
             <!-- Save is a plain link to the export endpoint; `download` forces a file save -->
-            <a class="mrow" id="saveLink" href="/api/export" download>⬇ Save a backup</a>
-            <button class="mrow" id="loadBtn">⬆ Load a backup</button>
-            <button class="mrow" id="restoreBtn">⟲ Restore a snapshot</button>
+            <a class="mrow" id="saveLink" href="/api/export" download><span data-mico="save"></span>Save a backup</a>
+            <button class="mrow" id="loadBtn"><span data-mico="load"></span>Load a backup</button>
+            <div class="msep"></div>
+            <div class="mhead">Restore</div>
+            <button class="mrow" id="restoreBtn"><span data-mico="restore"></span>Restore a snapshot</button>
             <div class="msep"></div>
             <div class="mver" data-ver><span class="v"></span>
               <button class="btn" data-checkupd>Check for updates</button></div>
@@ -1257,24 +1351,30 @@
 <!-- ===== Action sheet (phones) — the header buttons, out of the way ===== -->
 <div class="modal-bg sheetbg" id="menuSheet">
   <div class="sheet" role="menu" aria-label="Actions">
-    <button class="sheetrow" data-do="newTripBtn"><span class="ico">+</span>New trip</button>
-    <button class="sheetrow" data-do="setBtn"><span class="ico">⚙</span>Currencies &amp; rates</button>
+    <button class="sheetrow" data-do="newTripBtn"><span class="ico" data-mico="plus"></span>New trip</button>
+    <div class="sheetsep"></div>
+    <div class="sheethead">Currency</div>
+    <button class="sheetrow" data-do="setBtn"><span class="ico" data-mico="coins"></span>Currencies &amp; rates</button>
     <!-- Keeps the sheet open: the result is reported in this row's own label,
          and on a phone the header button that normally carries that feedback is
          not on screen at all. -->
-    <button class="sheetrow" data-do="ratesBtn" data-keepopen><span class="ico">↻</span
+    <button class="sheetrow" data-do="ratesBtn" data-keepopen><span class="ico" data-mico="refresh"></span
       ><span id="ratesLblM">Update rates online</span></button>
-    <div class="sheetsep"></div>
     <!-- Not a .sheetrow: it is a control, not an action, so it does not close
          the sheet on touch and is not part of the click-through wiring. -->
-    <label class="sheetsel"><span class="ico">◎</span>Show amounts in
+    <label class="sheetsel"><span class="ico" data-mico="globe"></span>Show amounts in
       <select id="dispCurM" class="mono" aria-label="Show amounts in"></select></label>
-    <div class="sheetsel segrow"><span class="ico">◐</span>Appearance
+    <div class="sheetsep"></div>
+    <div class="sheethead">Display</div>
+    <div class="sheetsel segrow"><span class="ico" data-mico="contrast"></span>Appearance
       <div class="seg" data-seg="theme" role="group" aria-label="Appearance"></div></div>
     <div class="sheetsep"></div>
-    <button class="sheetrow" data-do="saveLink"><span class="ico">⬇</span>Save a backup</button>
-    <button class="sheetrow" data-do="loadBtn"><span class="ico">⬆</span>Load a backup</button>
-    <button class="sheetrow" data-do="restoreBtn"><span class="ico">⟲</span>Restore a snapshot</button>
+    <div class="sheethead">Backups</div>
+    <button class="sheetrow" data-do="saveLink"><span class="ico" data-mico="save"></span>Save a backup</button>
+    <button class="sheetrow" data-do="loadBtn"><span class="ico" data-mico="load"></span>Load a backup</button>
+    <div class="sheetsep"></div>
+    <div class="sheethead">Restore</div>
+    <button class="sheetrow" data-do="restoreBtn"><span class="ico" data-mico="restore"></span>Restore a snapshot</button>
     <div class="sheetsep"></div>
     <div class="mver" data-ver><span class="v"></span>
       <button class="btn" data-checkupd>Check for updates</button></div>
@@ -1285,9 +1385,13 @@
 <!-- ===== Trip create/edit modal ===== -->
 <div class="modal-bg" id="tripModal">
   <div class="modal">
-    <h3 id="tripModalTitle">New trip</h3>
-    <div class="sub">Nights are derived from the dates, and everything per-day divides by
-      nights × travellers — so these four fields decide whether the analytics mean anything.</div>
+    <!-- The explanation is reference, not instruction: it sits behind the i
+         rather than above every form, where it pushed the first field down. -->
+    <div class="titlerow"><h3 id="tripModalTitle">New trip</h3>
+      <button type="button" class="infobtn" aria-expanded="false" aria-controls="tripInfo"
+              aria-label="About these fields" title="About these fields"></button></div>
+    <div class="infobox" id="tripInfo" hidden><p>Nights are derived from the dates, and everything per-day divides by
+      nights × travellers — so these four fields decide whether the analytics mean anything.</p></div>
     <div class="err" id="tripErr"></div>
     <div class="fgrid">
       <div class="wide"><label for="tfName">Name</label><input id="tfName" placeholder="e.g. Andalusia" /></div>
@@ -1379,11 +1483,19 @@
 <!-- ===== Currency settings modal ===== -->
 <div class="modal-bg" id="setModal">
   <div class="modal">
-    <h3>Currencies &amp; default rates</h3>
-    <div class="sub">Rate = how many units of the base currency one unit is worth
+    <div class="titlerow"><h3>Currencies &amp; default rates</h3>
+      <button type="button" class="infobtn" aria-expanded="false" aria-controls="setInfo"
+              aria-label="How rates work" title="How rates work"></button></div>
+    <div class="infobox" id="setInfo" hidden>
+      <p>Rate = how many units of the base currency one unit is worth
       (EUR 0.85 means €1 = £0.85). These are <strong>defaults for the entry form only</strong>.
       Each line item stores the rate it was entered with, so changing a rate here never
-      restates a past trip.</div>
+      restates a past trip.</p>
+      <p>The currency list comes from your device, not the internet — every name
+      and symbol above is one your browser already knows, so this works offline. Rates are yours:
+      <b>Update rates online</b> fills the ones the European Central Bank publishes and is the only
+      outbound request this app ever makes; the rest you type when they drift enough to matter.</p>
+    </div>
     <div class="err" id="setErr"></div>
     <div id="curRows"></div>
     <label for="addCur" style="margin-top:10px">Add currency</label>
@@ -1393,10 +1505,6 @@
         <div class="note" id="baseNote" style="margin-top:5px"></div></div>
       <div><label for="setTrav">Default travellers</label><input id="setTrav" class="mono" type="number" inputmode="numeric" min="1" /></div>
     </div>
-    <div class="note">The currency list comes from your device, not the internet — every name
-      and symbol above is one your browser already knows, so this works offline. Rates are yours:
-      <b>Update rates online</b> fills the ones the European Central Bank publishes and is the only
-      outbound request this app ever makes; the rest you type when they drift enough to matter.</div>
     <div class="modal-actions">
       <button class="btn" data-close="setModal">Cancel</button>
       <button class="btn primary" id="setSave">Save</button>
@@ -1410,11 +1518,13 @@
     <!-- Close sits in the title row: the list below can be 30 rows long, and the
          way out should not be at the far end of it. -->
     <div class="modalhead">
-      <h3>Restore a snapshot</h3>
+      <div class="titlerow"><h3>Restore a snapshot</h3>
+        <button type="button" class="infobtn" aria-expanded="false" aria-controls="snapInfo"
+              aria-label="About snapshots" title="About snapshots"></button></div>
       <button class="btn" data-close="snapModal">Close</button>
     </div>
-    <div class="sub">One snapshot is written automatically before every change; the newest 30
-      are kept. Restoring snapshots the current state first, so a restore is itself undoable.</div>
+    <div class="infobox" id="snapInfo" hidden><p>One snapshot is written automatically before every change; the newest 30
+      are kept. Restoring snapshots the current state first, so a restore is itself undoable.</p></div>
     <div id="snapList"></div>
   </div>
 </div>
@@ -1786,10 +1896,14 @@ function renderNav(){
       if (b.dataset.v === "trip") state.tripId = null;
       // The bar stays live while the sheet is open, so a tab press has to mean
       // what it says: go there, and take the sheet down on the way.
+      document.querySelectorAll(".modal-bg.insheet.open").forEach(m => m.classList.remove("open"));
       document.getElementById("menuSheet").classList.remove("open");
       state.view = b.dataset.v; render(); });
-  document.getElementById("navMoreBtn").onclick = () =>
+  // Settings while one of its pages is open means "back to the menu".
+  document.getElementById("navMoreBtn").onclick = () => {
+    document.querySelectorAll(".modal-bg.insheet.open").forEach(m => m.classList.remove("open"));
     document.getElementById("menuSheet").classList.add("open");
+  };
 
   const tabs = document.getElementById("tabs");
   if (state.view === "year") {
@@ -1940,6 +2054,30 @@ const KICON = {
 };
 const kicon = (d, cls = "kico") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+
+// Settings menu and phone sheet rows. One set for both, filled by data-mico, so
+// a row reads the same on desktop and on a phone and the two cannot drift.
+const MICONS = {
+  plus:     '<path d="M12 5v14M5 12h14"/>',
+  coins:    '<circle cx="9" cy="9" r="5.5"/><path d="M15.4 9.6a5.5 5.5 0 1 1-5.8 5.8"/><path d="M9 7v4"/>',
+  refresh:  '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/>'
+          + '<path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>',
+  globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>',
+  contrast: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/>',
+  save:     '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/>',
+  load:     '<path d="M12 15V4"/><path d="M7 9l5-5 5 5"/><path d="M4 20h16"/>',
+  restore:  '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>',
+  back:     '<path d="M15 5l-7 7 7 7"/>',
+  close:    '<path d="M6 6l12 12M18 6L6 18"/>',
+  info:     '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.7" r=".7" fill="currentColor"/>',
+  check:    '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+};
+document.querySelectorAll("[data-mico]").forEach((el) => {
+  // Desktop rows take a bare svg; sheet rows already sit in a 24px .ico cell.
+  el.outerHTML = el.classList.contains("ico")
+    ? `<span class="ico">${kicon(MICONS[el.dataset.mico], "")}</span>`
+    : kicon(MICONS[el.dataset.mico], "mico");
+});
 
 // ---- category breakdown, shared by the trip page and the year page ----
 // Bars by default, donut on request; one toggle state (state.bd) for both, on
@@ -3014,12 +3152,65 @@ document.getElementById("tripSave").onclick = async () => {
 
 // The sheet is a remote control: each row clicks the real header button, so
 // adding an action means adding it in one place, not two.
+const menuSheet = document.getElementById("menuSheet");
 document.querySelectorAll("#menuSheet .sheetrow").forEach(b => b.onclick = () => {
-  // Most rows are actions and the sheet's job is done once they fire. A row
-  // marked data-keepopen reports back into itself, so closing would throw the
-  // answer away before it could be read.
-  if (!b.hasAttribute("data-keepopen")) document.getElementById("menuSheet").classList.remove("open");
+  // A row marked data-keepopen reports back into itself, so closing would throw
+  // the answer away before it could be read.
+  if (b.hasAttribute("data-keepopen")) { document.getElementById(b.dataset.do).click(); return; }
+  const before = new Set(document.querySelectorAll(".modal-bg.open"));
   document.getElementById(b.dataset.do).click();
+  // If that row opened a dialog, it becomes a page of this sheet rather than a
+  // second window: it takes the sheet's frame and gains back and X.
+  document.querySelectorAll(".modal-bg.open").forEach(m => {
+    if (!before.has(m) && m !== menuSheet) m.classList.add("insheet");
+  });
+  menuSheet.classList.remove("open", "popback");
+});
+
+// Back and X for sheet pages. Injected rather than written into each dialog's
+// markup, so a dialog cannot be added to the sheet and forget its way out.
+document.querySelectorAll(".modal-bg:not(#menuSheet)").forEach(bg => {
+  const nav = document.createElement("div");
+  nav.className = "sheetnav";
+  nav.innerHTML =
+    `<button type="button" class="navback" aria-label="Back to Settings">${kicon(MICONS.back, "")}Settings</button>`
+    + `<span class="navstatus" role="status" aria-live="polite"></span>`
+    + `<button type="button" class="navx" aria-label="Close">${kicon(MICONS.close, "")}</button>`;
+  bg.querySelector(".modal").prepend(nav);
+  // Pressing back or X does not take focus off the field being typed in: no
+  // blur, no keyboard closing mid-tap, nothing moving under the finger. The
+  // edit is not lost — autosave flushes its pending timer on the way out.
+  nav.querySelectorAll("button").forEach(b => b.onpointerdown = (e) => e.preventDefault());
+  nav.querySelector(".navback").onclick = () => {
+    bg.classList.remove("open");
+    menuSheet.classList.add("open", "popback");
+  };
+  nav.querySelector(".navx").onclick = () => bg.classList.remove("open");
+  // However the page closes — Save, back, X, Escape, a tab press — it stops
+  // being a sheet page, so the next time it opens from a trip it is a dialog.
+  // Guarded on purpose: classList.remove rewrites the attribute even when the
+  // class is absent, which is itself a mutation — unguarded, this observer
+  // feeds itself forever and the page hangs.
+  new MutationObserver(() => {
+    if (bg.classList.contains("open")) return;
+    // Next visit starts with the explanation folded away again.
+    bg.querySelectorAll(".infobtn[aria-expanded=true]").forEach(b => b.click());
+    if (bg.classList.contains("insheet")) bg.classList.remove("insheet");
+  }).observe(bg, { attributes:true, attributeFilter:["class"] });
+});
+menuSheet.addEventListener("animationend", () => menuSheet.classList.remove("popback"));
+
+// The i next to a dialog title: opens its bubble in place, caret under the i.
+document.querySelectorAll(".infobtn").forEach(btn => {
+  btn.innerHTML = kicon(MICONS.info, "");
+  const box = document.getElementById(btn.getAttribute("aria-controls"));
+  btn.onclick = () => {
+    const open = box.hidden;
+    box.hidden = !open;
+    btn.setAttribute("aria-expanded", open);
+    if (open) box.style.setProperty("--caret",
+      (btn.getBoundingClientRect().left - box.getBoundingClientRect().left + btn.offsetWidth / 2 - 6) + "px");
+  };
 });
 
 // --- Settings dropdown -------------------------------------------------------
@@ -3173,6 +3364,7 @@ function drawCurRows(list){
   document.querySelectorAll("#curRows .cdel").forEach(b => b.onclick = () => {
     const cur = readCurRows(); cur.splice(+b.parentElement.dataset.i, 1);
     drawCurRows(cur); refreshBaseSelect(cur); drawCurPicker(cur);
+    queueAutoSave(0);
   });
 }
 
@@ -3217,6 +3409,8 @@ document.getElementById("setBtn").onclick = () => {
       + `Use the currency dropdown in the header to view in another currency.`
     : "Can be changed while the ledger is empty.";
   document.getElementById("setTrav").value = DEF_TRAVELLERS();
+  clearTimeout(autoTimer); autoTimer = null;
+  setNavStatus("", "Saves as you go");
   document.getElementById("setModal").classList.add("open");
 };
 document.getElementById("addCur").onchange = (e) => {
@@ -3247,6 +3441,66 @@ document.getElementById("setSave").onclick = async () => {
   }
 };
 
+// --- Phone: the Currencies page saves itself ---------------------------------
+// Opened from the Settings sheet it has no Save button: each edit is saved a
+// moment after you stop typing, and the page's header says so. Only there —
+// on desktop, and anywhere else, Save stays an explicit press.
+//
+// Nothing is sent that the server would refuse for a reason you are still in
+// the middle of fixing: a currency just added has no rate yet, and saying
+// "add a rate for CHF" beats flashing "Not saved" at every keystroke. What the
+// server does refuse is shown verbatim, as the Save button would show it.
+const setBg = document.getElementById("setModal");
+let autoTimer = null, autoBusy = false, autoAgain = false, autoSaved = false;
+function setNavStatus(cls, html){
+  const el = setBg.querySelector(".navstatus");
+  if (!el) return;
+  el.className = "navstatus" + (cls ? " " + cls : "");
+  el.innerHTML = html;
+}
+function queueAutoSave(delay){
+  if (!setBg.classList.contains("insheet")) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(autoSave, delay);
+}
+async function autoSave(){
+  autoTimer = null;
+  if (autoBusy) { autoAgain = true; return; }
+  const base = document.getElementById("setBase").value;
+  const currencies = readCurRows();
+  const trav = document.getElementById("setTrav").value;
+  const unrated = currencies.find(x => x.code !== base && !(x.rate > 0));
+  if (unrated) return setNavStatus("", `Add a rate for ${esc(unrated.code)}`);
+  if (!(Number(trav) >= 1)) return setNavStatus("", "Travellers: 1 or more");
+  autoBusy = true;
+  setNavStatus("", "Saving…");
+  try {
+    DATA.settings = await api("POST", "/api/settings", { baseCurrency: base, currencies, defaultTravellers: trav });
+    autoSaved = true;
+    document.getElementById("setErr").classList.remove("show");
+    setNavStatus("ok", kicon(MICONS.check, "") + "Saved");
+  } catch(e) {
+    setNavStatus("bad", "Not saved");
+    const box = document.getElementById("setErr");
+    box.textContent = e.message; box.classList.add("show");
+  } finally {
+    autoBusy = false;
+    if (autoAgain) { autoAgain = false; autoSave(); }
+    else if (autoSaved && !setBg.classList.contains("open")) afterAutoSave();
+  }
+}
+// The page behind re-reads the new defaults once you leave, not under your thumb.
+function afterAutoSave(){ autoSaved = false; estWired = false; render(); }
+setBg.addEventListener("input",  (e) => { if (e.target.matches("input")) queueAutoSave(700); });
+setBg.addEventListener("change", (e) => { if (e.target.matches("input,select")) queueAutoSave(0); });
+// Leaving — back, X, a tab — never drops the last edit: a pending save is sent
+// now rather than abandoned with its timer.
+new MutationObserver(() => {
+  if (setBg.classList.contains("open")) return;
+  if (autoTimer) { clearTimeout(autoTimer); autoSave(); }
+  else if (autoSaved && !autoBusy) afterAutoSave();
+}).observe(setBg, { attributes:true, attributeFilter:["class"] });
+
 /* =============================================================
    SECTION 12 — save / load / restore
    Mirrors rental_tracker's export-import-snapshot trio.
@@ -3267,6 +3521,15 @@ document.getElementById("fileInput").onchange = (ev) => {
   fr.readAsText(f);
 };
 
+const ago = (iso) => {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} hour${h > 1 ? "s" : ""} ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "yesterday" : `${d} days ago`;
+};
 document.getElementById("restoreBtn").onclick = async () => {
   const list = document.getElementById("snapList");
   list.innerHTML = `<div class="empty">Loading…</div>`;
@@ -3275,7 +3538,8 @@ document.getElementById("restoreBtn").onclick = async () => {
     const snaps = await api("GET","/api/backups");
     list.innerHTML = snaps.length ? snaps.map(s => `
       <div class="snaprow">
-        <span class="when">${s.mtime.replace("T"," ").slice(0,19)}</span>
+        <span class="snapwhen"><span class="when">${s.mtime.replace("T"," ").slice(0,16)}</span
+          ><span class="ago">${ago(s.mtime)}</span></span>
         <span class="sz">${(s.size/1024).toFixed(1)} KB</span>
         <button class="btn" data-s="${esc(s.name)}">Restore</button>
       </div>`).join("") : `<div class="empty">No snapshots yet.</div>`;

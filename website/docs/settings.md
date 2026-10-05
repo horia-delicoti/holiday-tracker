@@ -13,6 +13,10 @@ source or the environment.
 | `currencies[]` | GBP / EUR / RON | the entry form's rate pre-fill |
 | `defaultTravellers` | `2` | pre-fills a new trip's travellers field and the overview estimator's party size |
 
+On a phone, the Currencies page (Settings tab → Currencies & rates) **saves as you go**: there is no
+Save button, and the page header reports *Saving…*, *✓ Saved* or *Not saved* with the reason. A newly
+added currency is not saved until it has a rate. On desktop the dialog keeps its explicit **Save**.
+
 `defaultTravellers` is **only** a pre-fill. Every trip stores its own count, so changing it never
 alters a trip already recorded.
 
